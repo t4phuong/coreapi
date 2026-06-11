@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <record id="endpoint_health" model="core.api.endpoint">
+        <field name="name">Health Check</field>
+        <field name="code">health</field>
+        <field name="route_pattern">/api/v1/health</field>
+        <field name="description">Connectivity and status check.</field>
+    </record>
+
+    <record id="endpoint_orders" model="core.api.endpoint">
+        <field name="name">Orders</field>
+        <field name="code">orders</field>
+        <field name="route_pattern">/api/v1/orders</field>
+        <field name="description">Sales order APIs for POS and external systems.</field>
+    </record>
+
+    <record id="endpoint_hr" model="core.api.endpoint">
+        <field name="name">Human Resources</field>
+        <field name="code">hr</field>
+        <field name="route_pattern">/api/v1/hr</field>
+        <field name="description">Employee and HR data APIs.</field>
+    </record>
+
+</odoo>

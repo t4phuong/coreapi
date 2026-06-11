@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <menuitem id="menu_core_api_root"
+              name="Core API"
+              groups="t4_coreapi.group_core_api_manager"
+              sequence="90"/>
+
+    <menuitem id="menu_core_api_devices"
+              name="Devices"
+              parent="menu_core_api_root"
+              action="action_core_api_device"
+              sequence="10"/>
+
+    <menuitem id="menu_core_api_endpoints"
+              name="API Endpoints"
+              parent="menu_core_api_root"
+              action="action_core_api_endpoint"
+              sequence="20"/>
+
+    <menuitem id="menu_core_api_tokens"
+              name="Access Tokens"
+              parent="menu_core_api_root"
+              action="action_core_api_token"
+              sequence="30"/>
+
+    <menuitem id="menu_core_api_logs"
+              name="Request Logs"
+              parent="menu_core_api_root"
+              action="action_core_api_log"
+              sequence="40"/>
+
+</odoo>

@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="view_core_api_device_list" model="ir.ui.view">
+        <field name="name">core.api.device.list</field>
+        <field name="model">core.api.device</field>
+        <field name="arch" type="xml">
+            <list>
+                <field name="name"/>
+                <field name="client_id"/>
+                <field name="state" widget="badge"
+                       decoration-success="state == 'active'"
+                       decoration-muted="state == 'inactive'"/>
+                <field name="token_expiration"/>
+                <field name="last_auth_at"/>
+                <field name="token_count"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_core_api_device_form" model="ir.ui.view">
+        <field name="name">core.api.device.form</field>
+        <field name="model">core.api.device</field>
+        <field name="arch" type="xml">
+            <form string="API Device">
+                <header>
+                    <button name="action_view_credentials" type="object"
+                            string="View Credentials"
+                            invisible="not credentials_pending"
+                            groups="t4_coreapi.group_core_api_manager"/>
+                    <button name="action_regenerate_secret" type="object"
+                            string="Regenerate Secret"
+                            invisible="not id"
+                            groups="t4_coreapi.group_core_api_manager"/>
+                    <button name="action_revoke_token" type="object"
+                            string="Revoke Token"
+                            class="btn-warning"
+                            invisible="not active_token_id"
+                            groups="t4_coreapi.group_core_api_manager"/>
+                    <field name="state" widget="statusbar" statusbar_visible="active,inactive"/>
+                </header>
+                <sheet>
+                    <div class="alert alert-info" role="alert" invisible="id">
+                        Client ID and Client Secret are generated automatically when you save.
+                        A popup will appear so you can copy them once.
+                    </div>
+                    <div class="oe_button_box" name="button_box">
+                        <button name="action_view_tokens" type="object" class="oe_stat_button" icon="fa-key"
+                                invisible="not id">
+                            <field name="token_count" widget="statinfo" string="Tokens"/>
+                        </button>
+                        <button name="action_view_logs" type="object" class="oe_stat_button" icon="fa-list"
+                                invisible="not id">
+                            <field name="log_count" widget="statinfo" string="Logs"/>
+                        </button>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="client_id" readonly="1" invisible="not client_id"/>
+                            <field name="token_ttl_hours"/>
+                        </group>
+                        <group string="Token Status">
+                            <field name="active_token_id" readonly="1"/>
+                            <field name="token_expiration"/>
+                            <field name="last_auth_at"/>
+                            <field name="last_auth_ip"/>
+                            <field name="credentials_pending" invisible="1"/>
+                        </group>
+                    </group>
+                    <group string="Allowed APIs">
+                        <field name="endpoint_ids" widget="many2many_tags" nolabel="1"/>
+                    </group>
+                    <group string="Security (DDoS / Access)">
+                        <group>
+                            <field name="rate_limit_per_minute"/>
+                            <field name="auth_rate_limit_per_minute"/>
+                        </group>
+                        <group>
+                            <field name="allowed_ips" placeholder="203.0.113.10&#10;198.51.100.0/24"/>
+                        </group>
+                    </group>
+                    <field name="notes" placeholder="Internal notes…"/>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_core_api_device" model="ir.actions.act_window">
+        <field name="name">API Devices</field>
+        <field name="res_model">core.api.device</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+</odoo>
