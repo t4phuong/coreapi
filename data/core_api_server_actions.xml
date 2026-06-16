@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <record id="action_health_server" model="ir.actions.server">
+        <field name="name">Core API: Health</field>
+        <field name="model_id" ref="model_core_api_application"/>
+        <field name="state">code</field>
+        <field name="code">
+record.set_api_response({
+    'status': 'ok',
+    'application': record.name,
+    'client_id': record.client_id,
+    'endpoint': env.context.get('core_api_endpoint_code'),
+    'method': env.context.get('core_api_method'),
+})
+        </field>
+    </record>
+
+</odoo>

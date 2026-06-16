@@ -22,7 +22,7 @@ AUTH_ROUTE = '/api/v1/auth/token'
 class CoreApiAuthController(http.Controller):
     """OAuth2-style client credentials token endpoint."""
 
-    def _log_auth(self, device, ip, ua, status_code, success, duration_ms=0, error=None):
+    def _log_auth(self, application, ip, ua, status_code, success, duration_ms=0, error=None):
         request.env['core.api.log'].sudo().log_event(
             event_type='auth',
             route=AUTH_ROUTE,
@@ -30,7 +30,7 @@ class CoreApiAuthController(http.Controller):
             ip_address=ip,
             status_code=status_code,
             success=success,
-            device=device,
+            application=application,
             duration_ms=duration_ms,
             error_message=error,
             user_agent=ua,
@@ -48,13 +48,13 @@ class CoreApiAuthController(http.Controller):
         t0 = time.time()
         ip = get_client_ip()
         ua = request.httprequest.headers.get('User-Agent')
-        device = request.env['core.api.device']
+        application = request.env['core.api.application']
 
         try:
             check_ip_auth_rate_limit(request.env, ip)
         except Exception as e:
             duration = (time.time() - t0) * 1000
-            self._log_auth(device, ip, ua, 429, False, duration, str(e))
+            self._log_auth(application, ip, ua, 429, False, duration, str(e))
             raise TooManyRequests(str(e)) from e
 
         try:
@@ -73,7 +73,7 @@ class CoreApiAuthController(http.Controller):
         if grant_type != 'client_credentials':
             raise BadRequest('Unsupported grant_type. Use client_credentials.')
 
-        candidate = request.env['core.api.device'].sudo().search([
+        candidate = request.env['core.api.application'].sudo().search([
             ('client_id', '=', client_id),
         ], limit=1)
         if candidate:
@@ -87,17 +87,17 @@ class CoreApiAuthController(http.Controller):
                     raise TooManyRequests(str(e)) from e
                 raise
 
-        device = request.env['core.api.device'].sudo().authenticate_client(
+        application = request.env['core.api.application'].sudo().authenticate_client(
             client_id, client_secret, ip_address=ip,
         )
-        if not device:
+        if not application:
             duration = (time.time() - t0) * 1000
             self._log_auth(candidate, ip, ua, 401, False, duration, 'Invalid client credentials')
             _logger.warning('Core API auth failed for client_id=%s from %s', client_id, ip)
             raise Unauthorized('Invalid client credentials')
 
-        plaintext, token_rec = request.env['core.api.token'].sudo().issue_for_device(device)
-        expires_in = device.token_ttl_hours * 3600 if device.token_ttl_hours else None
+        plaintext, token_rec = request.env['core.api.token'].sudo().issue_for_application(application)
+        expires_in = application.token_ttl_hours * 3600 if application.token_ttl_hours else None
         body = {
             'access_token': plaintext,
             'token_type': 'Bearer',
@@ -108,7 +108,7 @@ class CoreApiAuthController(http.Controller):
             body['expires_at'] = token_rec.expiration_date.isoformat()
 
         duration = (time.time() - t0) * 1000
-        self._log_auth(device, ip, ua, 200, True, duration)
+        self._log_auth(application, ip, ua, 200, True, duration)
 
         return request.make_response(
             json.dumps(body),

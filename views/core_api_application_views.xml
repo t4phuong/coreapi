@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
-    <record id="view_core_api_device_list" model="ir.ui.view">
-        <field name="name">core.api.device.list</field>
-        <field name="model">core.api.device</field>
+    <record id="view_core_api_application_list" model="ir.ui.view">
+        <field name="name">core.api.application.list</field>
+        <field name="model">core.api.application</field>
         <field name="arch" type="xml">
             <list>
                 <field name="name"/>
@@ -18,11 +18,11 @@
         </field>
     </record>
 
-    <record id="view_core_api_device_form" model="ir.ui.view">
-        <field name="name">core.api.device.form</field>
-        <field name="model">core.api.device</field>
+    <record id="view_core_api_application_form" model="ir.ui.view">
+        <field name="name">core.api.application.form</field>
+        <field name="model">core.api.application</field>
         <field name="arch" type="xml">
-            <form string="API Device">
+            <form string="API Application">
                 <header>
                     <button name="action_view_credentials" type="object"
                             string="View Credentials"
@@ -87,9 +87,9 @@
         </field>
     </record>
 
-    <record id="action_core_api_device" model="ir.actions.act_window">
-        <field name="name">API Devices</field>
-        <field name="res_model">core.api.device</field>
+    <record id="action_core_api_application" model="ir.actions.act_window">
+        <field name="name">Applications</field>
+        <field name="res_model">core.api.application</field>
         <field name="view_mode">list,form</field>
     </record>
 

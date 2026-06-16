@@ -2,7 +2,6 @@
 
 import ipaddress
 
-from odoo import fields
 from odoo.exceptions import AccessError
 from odoo.http import request
 
@@ -45,28 +44,28 @@ def check_rate_limit(env, domain_extra, limit, error_message):
     return True
 
 
-def check_device_api_rate_limit(device):
-    device.ensure_one()
+def check_application_api_rate_limit(application):
+    application.ensure_one()
     check_rate_limit(
-        device.env,
-        [('device_id', '=', device.id), ('event_type', '=', 'api')],
-        device.rate_limit_per_minute,
-        f'API rate limit exceeded for device "{device.name}" ({device.rate_limit_per_minute}/min).',
+        application.env,
+        [('application_id', '=', application.id), ('event_type', '=', 'api')],
+        application.rate_limit_per_minute,
+        f'API rate limit exceeded for application "{application.name}" ({application.rate_limit_per_minute}/min).',
     )
 
 
-def check_device_auth_rate_limit(device):
-    device.ensure_one()
+def check_application_auth_rate_limit(application):
+    application.ensure_one()
     check_rate_limit(
-        device.env,
-        [('device_id', '=', device.id), ('event_type', '=', 'auth')],
-        device.auth_rate_limit_per_minute,
-        f'Auth rate limit exceeded for device "{device.name}" ({device.auth_rate_limit_per_minute}/min).',
+        application.env,
+        [('application_id', '=', application.id), ('event_type', '=', 'auth')],
+        application.auth_rate_limit_per_minute,
+        f'Auth rate limit exceeded for application "{application.name}" ({application.auth_rate_limit_per_minute}/min).',
     )
 
 
 def check_ip_auth_rate_limit(env, ip_address, limit=30):
-    """Global per-IP auth throttle when device is unknown or before lookup."""
+    """Global per-IP auth throttle when application is unknown or before lookup."""
     if not ip_address or not limit:
         return True
     check_rate_limit(

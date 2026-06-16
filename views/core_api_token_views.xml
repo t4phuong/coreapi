@@ -7,7 +7,7 @@
         <field name="arch" type="xml">
             <list decoration-muted="not active">
                 <field name="name"/>
-                <field name="device_name"/>
+                <field name="application_name"/>
                 <field name="client_id"/>
                 <field name="active"/>
                 <field name="create_date"/>
@@ -35,7 +35,7 @@
                 <sheet>
                     <group>
                         <field name="name"/>
-                        <field name="device_id"/>
+                        <field name="application_id"/>
                         <field name="client_id"/>
                         <field name="active"/>
                         <field name="expiration_date"/>

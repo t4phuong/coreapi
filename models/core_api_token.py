@@ -25,14 +25,14 @@ class CoreApiToken(models.Model):
     _order = 'create_date desc'
 
     name = fields.Char(required=True)
-    device_id = fields.Many2one(
-        'core.api.device',
+    application_id = fields.Many2one(
+        'core.api.application',
         required=True,
         ondelete='cascade',
         index=True,
     )
-    device_name = fields.Char(related='device_id.name', store=True)
-    client_id = fields.Char(related='device_id.client_id', store=True, index=True)
+    application_name = fields.Char(related='application_id.name', store=True)
+    client_id = fields.Char(related='application_id.client_id', store=True, index=True)
     active = fields.Boolean(default=True)
     expiration_date = fields.Datetime(index=True)
     last_used_at = fields.Datetime(readonly=True)
@@ -43,17 +43,17 @@ class CoreApiToken(models.Model):
     _index_unique = models.Constraint('unique(token_index)', 'Token index must be unique.')
 
     @api.model
-    def issue_for_device(self, device):
+    def issue_for_application(self, application):
         """Return (plaintext_token, token_record). Revokes previous active tokens."""
-        device.ensure_one()
-        if device.state != 'active':
-            raise UserError(_('Cannot issue a token for an inactive device.'))
+        application.ensure_one()
+        if application.state != 'active':
+            raise UserError(_('Cannot issue a token for an inactive application.'))
         self.sudo().search([
-            ('device_id', '=', device.id),
+            ('application_id', '=', application.id),
             ('active', '=', True),
         ]).write({'active': False})
 
-        ttl = device.token_ttl_hours
+        ttl = application.token_ttl_hours
         expiration = (
             False if not ttl
             else fields.Datetime.now() + datetime.timedelta(hours=ttl)
@@ -61,27 +61,27 @@ class CoreApiToken(models.Model):
         plaintext = binascii.hexlify(os.urandom(TOKEN_SIZE)).decode()
         token_rec = self.sudo().create({
             'name': f'Token {fields.Datetime.now()}',
-            'device_id': device.id,
+            'application_id': application.id,
             'expiration_date': expiration,
             'token_index': plaintext[:INDEX_SIZE],
             'token_hash': TOKEN_CRYPT_CONTEXT.hash(plaintext),
         })
         ip = request.httprequest.environ.get('REMOTE_ADDR', 'n/a') if request else 'n/a'
-        _logger.info('Core API token issued for device %s from %s', device.client_id, ip)
+        _logger.info('Core API token issued for application %s from %s', application.client_id, ip)
         return plaintext, token_rec
 
     @api.model
     def authenticate(self, plaintext_token):
-        """Validate bearer token. Returns (device, token) or (empty, empty)."""
-        empty_device = self.env['core.api.device']
+        """Validate bearer token. Returns (application, token) or (empty, empty)."""
+        empty_application = self.env['core.api.application']
         empty_token = self.browse()
         if not plaintext_token or len(plaintext_token) < INDEX_SIZE:
-            return empty_device, empty_token
+            return empty_application, empty_token
         index = plaintext_token[:INDEX_SIZE]
         tokens = self.sudo().search([
             ('active', '=', True),
             ('token_index', '=', index),
-            ('device_id.state', '=', 'active'),
+            ('application_id.state', '=', 'active'),
             '|',
             ('expiration_date', '=', False),
             ('expiration_date', '>=', fields.Datetime.now()),
@@ -90,8 +90,8 @@ class CoreApiToken(models.Model):
             if TOKEN_CRYPT_CONTEXT.verify(plaintext_token, token.token_hash):
                 ip = request.httprequest.environ.get('REMOTE_ADDR') if request else None
                 token.write({'last_used_at': fields.Datetime.now(), 'last_used_ip': ip})
-                return token.device_id, token
-        return empty_device, empty_token
+                return token.application_id, token
+        return empty_application, empty_token
 
     def action_revoke(self):
         if not self.env.user.has_group('t4_coreapi.group_core_api_manager'):
@@ -99,7 +99,7 @@ class CoreApiToken(models.Model):
         for token in self:
             token.sudo().write({'active': False})
             _logger.info(
-                'Core API token revoked: device %s #%s',
+                'Core API token revoked: application %s #%s',
                 token.client_id,
                 token.id,
             )

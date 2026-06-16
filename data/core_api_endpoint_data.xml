@@ -1,25 +1,29 @@
-<?xml version="1.0" encoding="utf-8"?>
-<odoo noupdate="1">
-
-    <record id="endpoint_health" model="core.api.endpoint">
-        <field name="name">Health Check</field>
-        <field name="code">health</field>
-        <field name="route_pattern">/api/v1/health</field>
-        <field name="description">Connectivity and status check.</field>
-    </record>
-
-    <record id="endpoint_orders" model="core.api.endpoint">
-        <field name="name">Orders</field>
-        <field name="code">orders</field>
-        <field name="route_pattern">/api/v1/orders</field>
-        <field name="description">Sales order APIs for POS and external systems.</field>
-    </record>
-
-    <record id="endpoint_hr" model="core.api.endpoint">
-        <field name="name">Human Resources</field>
-        <field name="code">hr</field>
-        <field name="route_pattern">/api/v1/hr</field>
-        <field name="description">Employee and HR data APIs.</field>
-    </record>
-
-</odoo>
+<?xml version="1.0" encoding="utf-8"?>
+<odoo noupdate="1">
+
+    <record id="endpoint_health" model="core.api.endpoint">
+        <field name="name">Health Check</field>
+        <field name="code">health</field>
+        <field name="route_pattern">/api/v1/health</field>
+        <field name="http_methods">GET</field>
+        <field name="action_id" ref="action_health_server"/>
+        <field name="description">Connectivity check — runs the linked Server Action.</field>
+    </record>
+
+    <record id="endpoint_orders" model="core.api.endpoint">
+        <field name="name">Orders</field>
+        <field name="code">orders</field>
+        <field name="route_pattern">/api/v1/orders</field>
+        <field name="http_methods">GET,POST</field>
+        <field name="description">Branch applications push/pull orders. Link a Server Action to handle requests.</field>
+    </record>
+
+    <record id="endpoint_hr" model="core.api.endpoint">
+        <field name="name">Human Resources</field>
+        <field name="code">hr</field>
+        <field name="route_pattern">/api/v1/hr</field>
+        <field name="http_methods">GET</field>
+        <field name="description">HR data sync. Link a Server Action to handle requests.</field>
+    </record>
+
+</odoo>

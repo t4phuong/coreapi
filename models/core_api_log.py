@@ -8,7 +8,7 @@ class CoreApiLog(models.Model):
     _description = 'Core API Request Log'
     _order = 'create_date desc'
 
-    device_id = fields.Many2one('core.api.device', index=True, ondelete='set null')
+    application_id = fields.Many2one('core.api.application', index=True, ondelete='set null')
     client_id = fields.Char(index=True)
     event_type = fields.Selection(
         [('auth', 'Authentication'), ('api', 'API Call')],
@@ -33,14 +33,14 @@ class CoreApiLog(models.Model):
         ip_address,
         status_code,
         success,
-        device=None,
+        application=None,
         duration_ms=0,
         error_message=None,
         user_agent=None,
     ):
         return self.sudo().create({
-            'device_id': device.id if device else False,
-            'client_id': device.client_id if device else False,
+            'application_id': application.id if application else False,
+            'client_id': application.client_id if application else False,
             'event_type': event_type,
             'route': route,
             'method': method,

@@ -11,7 +11,7 @@ _logger = logging.getLogger(__name__)
 
 
 def validate_core_api(endpoint_code=None, check_route=False):
-    """Decorator for Core API controllers — enforces per-device API permissions.
+    """Decorator for Core API controllers — enforces per-application API permissions.
 
     Usage::
 
@@ -26,16 +26,16 @@ def validate_core_api(endpoint_code=None, check_route=False):
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
-            device_id = request.env.context.get('core_api_device_id')
-            if not device_id:
-                raise Forbidden('Core API device context missing — use auth="core_api".')
-            device = request.env['core.api.device'].sudo().browse(device_id)
-            if not device:
-                raise Forbidden('Unknown Core API device.')
+            application_id = request.env.context.get('core_api_application_id')
+            if not application_id:
+                raise Forbidden('Core API application context missing — use auth="core_api".')
+            application = request.env['core.api.application'].sudo().browse(application_id)
+            if not application:
+                raise Forbidden('Unknown Core API application.')
             if endpoint_code:
-                device.check_api_access(endpoint_code)
+                application.check_api_access(endpoint_code)
             else:
-                device.check_route_access(request.httprequest.path)
+                application.check_route_access(request.httprequest.path)
             return func(self, *args, **kwargs)
         return wrapper
     return decorator

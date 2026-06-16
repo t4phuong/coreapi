@@ -14,9 +14,9 @@ _logger = logging.getLogger(__name__)
 SECRET_CRYPT_CONTEXT = CryptContext(['pbkdf2_sha512'], pbkdf2_sha512__rounds=6000)
 
 
-class CoreApiDevice(models.Model):
-    _name = 'core.api.device'
-    _description = 'External API Device'
+class CoreApiApplication(models.Model):
+    _name = 'core.api.application'
+    _description = 'External API Application'
     _inherit = ['mail.thread', 'mail.activity.mixin']
     _order = 'name'
 
@@ -28,7 +28,7 @@ class CoreApiDevice(models.Model):
         readonly=True,
         index=True,
         tracking=True,
-        help='Auto-generated when the device is saved.',
+        help='Auto-generated when the application is saved.',
     )
     client_secret = fields.Char(
         string='Client Secret (hashed)',
@@ -49,7 +49,7 @@ class CoreApiDevice(models.Model):
         default=24,
         help='Lifetime of issued access tokens. 0 = non-expiring (not recommended).',
     )
-    token_ids = fields.One2many('core.api.token', 'device_id')
+    token_ids = fields.One2many('core.api.token', 'application_id')
     token_count = fields.Integer(compute='_compute_token_count')
     active_token_id = fields.Many2one(
         'core.api.token',
@@ -70,27 +70,27 @@ class CoreApiDevice(models.Model):
     )
     endpoint_ids = fields.Many2many(
         'core.api.endpoint',
-        'core_api_device_endpoint_rel',
-        'device_id',
+        'core_api_application_endpoint_rel',
+        'application_id',
         'endpoint_id',
         string='Allowed APIs',
-        help='API endpoints this device is allowed to call.',
+        help='Gateway routes this application is allowed to call.',
     )
     rate_limit_per_minute = fields.Integer(
         string='API Rate Limit (/min)',
         default=60,
-        help='Max API calls per minute for this device. 0 = unlimited.',
+        help='Max API calls per minute. 0 = unlimited.',
     )
     auth_rate_limit_per_minute = fields.Integer(
         string='Auth Rate Limit (/min)',
         default=10,
-        help='Max token requests per minute for this device. 0 = unlimited.',
+        help='Max token requests per minute. 0 = unlimited.',
     )
     allowed_ips = fields.Text(
         string='Allowed IPs',
         help='One IP or CIDR per line. Empty = allow any IP.',
     )
-    log_ids = fields.One2many('core.api.log', 'device_id')
+    log_ids = fields.One2many('core.api.log', 'application_id')
     log_count = fields.Integer(compute='_compute_log_count')
     last_auth_at = fields.Datetime(readonly=True)
     last_auth_ip = fields.Char(readonly=True)
@@ -150,40 +150,40 @@ class CoreApiDevice(models.Model):
 
     @api.model
     def _generate_client_id(self):
-        return f'dev_{secrets.token_hex(16)}'
+        return f'app_{secrets.token_hex(16)}'
 
     def _store_pending_secret(self, plaintext_secret):
         self.ensure_one()
         if request and getattr(request, 'session', None) is not None:
-            pending = dict(request.session.get('core_api_device_secrets', {}))
+            pending = dict(request.session.get('core_api_application_secrets', {}))
             pending[str(self.id)] = plaintext_secret
-            request.session['core_api_device_secrets'] = pending
+            request.session['core_api_application_secrets'] = pending
 
     def _pop_pending_secret(self):
         self.ensure_one()
         if request and getattr(request, 'session', None) is not None:
-            pending = dict(request.session.get('core_api_device_secrets', {}))
+            pending = dict(request.session.get('core_api_application_secrets', {}))
             return pending.pop(str(self.id), None)
         return None
 
     def _clear_pending_secret(self):
         self.ensure_one()
         if request and getattr(request, 'session', None) is not None:
-            pending = dict(request.session.get('core_api_device_secrets', {}))
+            pending = dict(request.session.get('core_api_application_secrets', {}))
             pending.pop(str(self.id), None)
-            request.session['core_api_device_secrets'] = pending
+            request.session['core_api_application_secrets'] = pending
 
     def _open_secret_wizard(self, plaintext_secret):
         self.ensure_one()
-        wizard = self.env['core.api.device.secret.wizard'].create({
-            'device_id': self.id,
+        wizard = self.env['core.api.application.secret.wizard'].create({
+            'application_id': self.id,
             'client_id': self.client_id,
             'client_secret': plaintext_secret,
         })
         return {
             'type': 'ir.actions.act_window',
-            'name': _('Device Credentials'),
-            'res_model': 'core.api.device.secret.wizard',
+            'name': _('Application Credentials'),
+            'res_model': 'core.api.application.secret.wizard',
             'res_id': wizard.id,
             'view_mode': 'form',
             'target': 'new',
@@ -204,7 +204,7 @@ class CoreApiDevice(models.Model):
     def action_regenerate_secret(self):
         self.ensure_one()
         if self.state != 'active':
-            raise UserError(_('Cannot regenerate secret for an inactive device.'))
+            raise UserError(_('Cannot regenerate secret for an inactive application.'))
         plaintext = secrets.token_urlsafe(32)
         self.sudo().write({'client_secret': SECRET_CRYPT_CONTEXT.hash(plaintext)})
         return self._open_secret_wizard(plaintext)
@@ -220,7 +220,7 @@ class CoreApiDevice(models.Model):
             'tag': 'display_notification',
             'params': {
                 'title': _('Token Revoked'),
-                'message': _('The active token for device "%s" has been revoked.', self.name),
+                'message': _('The active token for application "%s" has been revoked.', self.name),
                 'type': 'warning',
                 'sticky': False,
             },
@@ -233,8 +233,8 @@ class CoreApiDevice(models.Model):
             'name': _('Tokens'),
             'res_model': 'core.api.token',
             'view_mode': 'list,form',
-            'domain': [('device_id', '=', self.id)],
-            'context': {'default_device_id': self.id},
+            'domain': [('application_id', '=', self.id)],
+            'context': {'default_application_id': self.id},
         }
 
     def action_view_logs(self):
@@ -244,7 +244,23 @@ class CoreApiDevice(models.Model):
             'name': _('Request Logs'),
             'res_model': 'core.api.log',
             'view_mode': 'list,form',
-            'domain': [('device_id', '=', self.id)],
+            'domain': [('application_id', '=', self.id)],
+        }
+
+    def set_api_response(self, data):
+        """Call from linked Server Action code to return JSON to the API client."""
+        request.core_api_response = data
+
+    def get_api_context(self):
+        """Request data injected by the gateway — use in Server Action code."""
+        self.ensure_one()
+        ctx = self.env.context
+        return {
+            'method': ctx.get('core_api_method'),
+            'route': ctx.get('core_api_route'),
+            'endpoint_code': ctx.get('core_api_endpoint_code'),
+            'body': ctx.get('core_api_body') or {},
+            'params': ctx.get('core_api_params') or {},
         }
 
     def check_ip_allowed(self, ip_address):
@@ -252,47 +268,47 @@ class CoreApiDevice(models.Model):
         from odoo.addons.t4_coreapi.utils.security import check_ip_allowed
         if not check_ip_allowed(self.allowed_ips, ip_address):
             raise AccessError(
-                _('IP address %(ip)s is not allowed for device "%(device)s".',
-                  ip=ip_address, device=self.name)
+                _('IP address %(ip)s is not allowed for application "%(app)s".',
+                  ip=ip_address, app=self.name)
             )
         return True
 
     def check_api_rate_limit(self):
-        from odoo.addons.t4_coreapi.utils.security import check_device_api_rate_limit
-        check_device_api_rate_limit(self)
+        from odoo.addons.t4_coreapi.utils.security import check_application_api_rate_limit
+        check_application_api_rate_limit(self)
         return True
 
     def check_auth_rate_limit(self):
-        from odoo.addons.t4_coreapi.utils.security import check_device_auth_rate_limit
-        check_device_auth_rate_limit(self)
+        from odoo.addons.t4_coreapi.utils.security import check_application_auth_rate_limit
+        check_application_auth_rate_limit(self)
         return True
 
     @api.model
     def authenticate_client(self, client_id, client_secret, ip_address=None):
-        """Validate client credentials. Returns device record or empty recordset."""
+        """Validate client credentials. Returns application or empty recordset."""
         if not client_id or not client_secret:
             return self.browse()
-        device = self.sudo().search([
+        application = self.sudo().search([
             ('client_id', '=', client_id),
             ('state', '=', 'active'),
         ], limit=1)
-        if not device or not SECRET_CRYPT_CONTEXT.verify(client_secret, device.client_secret):
+        if not application or not SECRET_CRYPT_CONTEXT.verify(client_secret, application.client_secret):
             return self.browse()
-        device.write({
+        application.write({
             'last_auth_at': fields.Datetime.now(),
             'last_auth_ip': ip_address or False,
         })
-        return device
+        return application
 
     def check_api_access(self, endpoint_code):
         self.ensure_one()
         if self.state != 'active':
-            raise AccessError(_('Device "%s" is inactive.', self.name))
+            raise AccessError(_('Application "%s" is inactive.', self.name))
         allowed = self.endpoint_ids.mapped('code')
         if endpoint_code not in allowed:
             raise AccessError(
-                _('Device "%(device)s" is not allowed to access API: %(endpoint)s',
-                  device=self.name, endpoint=endpoint_code)
+                _('Application "%(app)s" is not allowed to access API: %(endpoint)s',
+                  app=self.name, endpoint=endpoint_code)
             )
         return True
 
@@ -300,13 +316,13 @@ class CoreApiDevice(models.Model):
         """Match request path against allowed endpoint route patterns."""
         self.ensure_one()
         if not self.endpoint_ids:
-            raise AccessError(_('Device "%s" has no allowed APIs configured.', self.name))
+            raise AccessError(_('Application "%s" has no allowed APIs configured.', self.name))
         normalized = (path or '').split('?')[0].rstrip('/') or '/'
         for endpoint in self.endpoint_ids:
             pattern = (endpoint.route_pattern or '').rstrip('/') or '/'
             if pattern == normalized or normalized.startswith(f'{pattern}/'):
                 return endpoint.code
         raise AccessError(
-            _('Device "%(device)s" is not allowed to call route: %(route)s',
-              device=self.name, route=path)
+            _('Application "%(app)s" is not allowed to call route: %(route)s',
+              app=self.name, route=path)
         )

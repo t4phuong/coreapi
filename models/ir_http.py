@@ -22,7 +22,7 @@ class IrHttp(models.AbstractModel):
 
     @classmethod
     def _auth_method_core_api(cls):
-        """Gatekeeper: validate device bearer token before controller runs."""
+        """Gatekeeper: validate application bearer token before controller runs."""
         token = cls._extract_bearer_token()
         if not token:
             raise Unauthorized(
@@ -30,8 +30,8 @@ class IrHttp(models.AbstractModel):
                 www_authenticate='Bearer realm="Core API"',
             )
 
-        device, token_rec = request.env['core.api.token'].sudo().authenticate(token)
-        if not device:
+        application, token_rec = request.env['core.api.token'].sudo().authenticate(token)
+        if not application:
             raise Unauthorized(
                 'Invalid or expired access token',
                 www_authenticate='Bearer realm="Core API"',
@@ -39,8 +39,8 @@ class IrHttp(models.AbstractModel):
 
         ip = get_client_ip()
         try:
-            device.check_ip_allowed(ip)
-            device.check_api_rate_limit()
+            application.check_ip_allowed(ip)
+            application.check_api_rate_limit()
         except Exception as e:
             if 'rate limit' in str(e).lower():
                 raise TooManyRequests(str(e)) from e
@@ -48,9 +48,9 @@ class IrHttp(models.AbstractModel):
 
         request.update_env(user=request.env.ref('base.public_user').id)
         request.update_context(
-            core_api_device_id=device.id,
+            core_api_application_id=application.id,
             core_api_token_id=token_rec.id,
-            core_api_client_id=device.client_id,
+            core_api_client_id=application.client_id,
         )
         request.session.can_save = False
 

@@ -11,7 +11,7 @@
                 <field name="route"/>
                 <field name="method"/>
                 <field name="client_id"/>
-                <field name="device_id"/>
+                <field name="application_id"/>
                 <field name="ip_address"/>
                 <field name="status_code"/>
                 <field name="success"/>
@@ -37,7 +37,7 @@
                             <field name="duration_ms"/>
                         </group>
                         <group>
-                            <field name="device_id"/>
+                            <field name="application_id"/>
                             <field name="client_id"/>
                             <field name="ip_address"/>
                             <field name="user_agent"/>

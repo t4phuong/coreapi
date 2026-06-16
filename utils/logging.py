@@ -19,10 +19,10 @@ def log_core_api(event_type='api'):
             method = request.httprequest.method
             ip = request.httprequest.environ.get('REMOTE_ADDR')
             ua = request.httprequest.headers.get('User-Agent')
-            device = None
-            device_id = request.env.context.get('core_api_device_id')
-            if device_id:
-                device = request.env['core.api.device'].sudo().browse(device_id)
+            application = None
+            application_id = request.env.context.get('core_api_application_id')
+            if application_id:
+                application = request.env['core.api.application'].sudo().browse(application_id)
 
             try:
                 result = func(self, *args, **kwargs)
@@ -35,7 +35,7 @@ def log_core_api(event_type='api'):
                     ip_address=ip,
                     status_code=status_code,
                     success=True,
-                    device=device,
+                    application=application,
                     duration_ms=duration,
                     user_agent=ua,
                 )
@@ -50,7 +50,7 @@ def log_core_api(event_type='api'):
                     ip_address=ip,
                     status_code=status_code,
                     success=False,
-                    device=device,
+                    application=application,
                     duration_ms=duration,
                     error_message=str(e)[:500],
                     user_agent=ua,

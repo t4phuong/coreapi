@@ -1,1 +1,1 @@
-from . import core_api_device_secret_wizard
+from . import core_api_application_secret_wizard
