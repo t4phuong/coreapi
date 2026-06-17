@@ -80,10 +80,6 @@ OAuth2-style API gateway for external applications and branch controllers.
 
         'security/t4_coreapi_rules.xml',
 
-        'data/core_api_server_actions.xml',
-
-        'data/core_api_endpoint_data.xml',
-
         'views/core_api_endpoint_views.xml',
 
         'views/core_api_application_views.xml',
@@ -91,6 +87,8 @@ OAuth2-style API gateway for external applications and branch controllers.
         'views/core_api_token_views.xml',
 
         'views/core_api_log_views.xml',
+
+        'views/core_api_action_endpoint_views.xml',
 
         'views/menu_views.xml',
 
@@ -103,8 +101,5 @@ OAuth2-style API gateway for external applications and branch controllers.
     'application': True,
 
     'license': 'LGPL-3',
-
-    'post_load': 'post_load',
-
 }
 
