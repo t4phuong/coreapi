@@ -7,7 +7,6 @@ from odoo.addons.t4_coreapi.utils.logging import log_core_api
 _logger = logging.getLogger(__name__)
 
 class CoreApiProxyController(CoreApiController):
-
     """API gateway — applications call Odoo routes; Odoo validates then runs Server Actions."""
     @http.route(
         [
@@ -19,10 +18,18 @@ class CoreApiProxyController(CoreApiController):
         csrf=False,
         save_session=False,
     )
-
     @log_core_api('api')
     def gateway(self, subpath, **kw):
         path = f'/api/v1/{subpath}'
         application = self._get_application()
-        return request.env['core.api.endpoint'].dispatch_request(path, application)
 
+        ctx = {
+            'core_api': {
+                'params': kw,
+                'body': request.httprequest.get_json(silent=True) or {},
+            }
+        }
+        
+        return request.env['core.api.endpoint'].with_context(
+            **ctx
+        ).dispatch_request(path, application)
