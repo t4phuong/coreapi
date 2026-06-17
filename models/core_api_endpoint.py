@@ -21,7 +21,7 @@ class CoreApiEndpoint(models.Model):
     code = fields.Char(
         required=True,
         index=True,
-        help='Permission code — assign to applications in Allowed APIs.',
+        help='Unique route code used in logs and API context.',
     )
     route_pattern = fields.Char(
         string='Gateway Route',
@@ -36,21 +36,12 @@ class CoreApiEndpoint(models.Model):
     action_id = fields.Many2one(
         'ir.actions.server',
         string='Server Action',
-        domain="[('model_id.model', '=', 'core.api.application')]",
-        help='Executed after auth check. Use record.set_api_response({...}) to return JSON.',
+        help='Executed after auth check. Any model — use env.context core_api_* keys.',
     )
     description = fields.Text(translate=True)
     active = fields.Boolean(default=True)
 
     _code_unique = models.Constraint('unique(code)', 'Endpoint code must be unique.')
-
-    @api.constrains('action_id')
-    def _check_action_model(self):
-        for rec in self:
-            if rec.action_id and rec.action_id.model_id.model != 'core.api.application':
-                raise ValidationError(
-                    _('Server Action must be defined on model core.api.application.')
-                )
 
     def _parsed_methods(self):
         self.ensure_one()
@@ -88,6 +79,32 @@ class CoreApiEndpoint(models.Model):
                 raise BadRequest('Invalid JSON body.') from e
         return raw
 
+    def _server_action_context(self, application, httprequest):
+        self.ensure_one()
+        ctx = {
+            'core_api_application_id': application.id,
+            'core_api_method': httprequest.method,
+            'core_api_route': self.route_pattern,
+            'core_api_endpoint_id': self.id,
+            'core_api_endpoint_code': self.code,
+            'core_api_body': self._parse_request_body(httprequest),
+            'core_api_params': dict(httprequest.args),
+        }
+        action_model = self.action_id.model_id.model
+        if action_model == 'core.api.application':
+            ctx.update({
+                'active_model': application._name,
+                'active_id': application.id,
+                'active_ids': application.ids,
+            })
+        else:
+            ctx.update({
+                'active_model': action_model,
+                'active_id': False,
+                'active_ids': [],
+            })
+        return ctx
+
     def _run_server_action(self, application, httprequest):
         self.ensure_one()
         if not self.action_id:
@@ -96,17 +113,7 @@ class CoreApiEndpoint(models.Model):
             ))
 
         request.core_api_response = None
-        ctx = {
-            'active_model': application._name,
-            'active_id': application.id,
-            'active_ids': application.ids,
-            'core_api_method': httprequest.method,
-            'core_api_route': self.route_pattern,
-            'core_api_endpoint_id': self.id,
-            'core_api_endpoint_code': self.code,
-            'core_api_body': self._parse_request_body(httprequest),
-            'core_api_params': dict(httprequest.args),
-        }
+        ctx = self._server_action_context(application, httprequest)
         self.action_id.sudo().with_context(**ctx).run()
 
         response_data = getattr(request, 'core_api_response', None)
@@ -115,7 +122,7 @@ class CoreApiEndpoint(models.Model):
                 'status': 'ok',
                 'message': (
                     'Server action ran but returned no JSON. '
-                    'Call record.set_api_response({...}) in the action code.'
+                    'Call env["core.api.application"].set_api_response({...}) in the action code.'
                 ),
             }
 
@@ -135,7 +142,7 @@ class CoreApiEndpoint(models.Model):
     def dispatch(self, application):
         self.ensure_one()
         if application:
-            application.check_api_access(self.code)
+            application.check_api_access(self)
         return self._run_server_action(application, request.httprequest)
 
     @api.model

@@ -33,7 +33,7 @@ def validate_core_api(endpoint_code=None, check_route=False):
             if not application:
                 raise Forbidden('Unknown Core API application.')
             if endpoint_code:
-                application.check_api_access(endpoint_code)
+                application.check_api_access_by_code(endpoint_code)
             else:
                 application.check_route_access(request.httprequest.path)
             return func(self, *args, **kwargs)

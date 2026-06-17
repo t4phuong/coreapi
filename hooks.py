@@ -143,6 +143,21 @@ def post_init_hook(env):
     if health_action and health_endpoint and not health_endpoint.action_id:
         health_endpoint.sudo().write({'action_id': health_action.id})
 
+    # Migrate legacy endpoint_ids M2M → server_action_ids
+    if not _table_exists(env.cr, 'core_api_application_endpoint_rel'):
+        return
+    env.cr.execute("""
+        SELECT DISTINCT rel.application_id, e.action_id
+        FROM core_api_application_endpoint_rel rel
+        JOIN core_api_endpoint e ON e.id = rel.endpoint_id
+        WHERE e.action_id IS NOT NULL
+    """)
+    Application = env['core.api.application'].sudo()
+    for app_id, action_id in env.cr.fetchall():
+        app = Application.browse(app_id)
+        if action_id not in app.server_action_ids.ids:
+            app.write({'server_action_ids': [(4, action_id)]})
+
 
 def post_load():
     """Allow ?db= on API routes when multiple databases are installed."""

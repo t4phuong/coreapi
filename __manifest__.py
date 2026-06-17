@@ -2,7 +2,7 @@
 
     'name': 'T4 Core API',
 
-    'version': '19.0.5.0.1',
+    'version': '19.0.5.0.2',
 
     'summary': 'Secure external API gateway with client credentials and token auth',
 
