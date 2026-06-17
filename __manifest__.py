@@ -2,7 +2,7 @@
 
     'name': 'T4 Core API',
 
-    'version': '19.0.5.0.0',
+    'version': '19.0.5.0.4',
 
     'summary': 'Secure external API gateway with client credentials and token auth',
 
@@ -103,10 +103,6 @@ OAuth2-style API gateway for external applications and branch controllers.
     'application': True,
 
     'license': 'LGPL-3',
-
-    'pre_init_hook': 'pre_init_hook',
-
-    'post_init_hook': 'post_init_hook',
 
     'post_load': 'post_load',
 

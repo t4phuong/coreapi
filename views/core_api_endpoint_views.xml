@@ -39,9 +39,11 @@
                 <sheet>
                     <div class="alert alert-info" role="alert">
                         Applications call <strong>Gateway Route</strong> on this Odoo server.
-                        After auth, Odoo runs the linked <strong>Server Action</strong> on
-                        <code>core.api.application</code>.
-                        Server Actions are created by developers under
+                        After auth, Odoo runs the linked <strong>Server Action</strong>
+                        (any model). Use
+                        <code>env['core.api.application'].set_api_response({...})</code>
+                        in the action code to return JSON.
+                        Server Actions are managed by developers under
                         <strong>Settings → Technical → Server Actions</strong> — here you only
                         <strong>select</strong> an existing action.
                     </div>

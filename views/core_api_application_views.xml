@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
 
+    <record id="view_core_api_application_search" model="ir.ui.view">
+        <field name="name">core.api.application.search</field>
+        <field name="model">core.api.application</field>
+        <field name="arch" type="xml">
+            <search string="Applications">
+                <field name="name"/>
+                <field name="client_id"/>
+                <filter string="Active" name="filter_active" domain="[('state', '=', 'active')]"/>
+                <filter string="Inactive" name="filter_inactive" domain="[('state', '=', 'inactive')]"/>
+            </search>
+        </field>
+    </record>
+
     <record id="view_core_api_application_list" model="ir.ui.view">
         <field name="name">core.api.application.list</field>
         <field name="model">core.api.application</field>
@@ -24,6 +37,15 @@
         <field name="arch" type="xml">
             <form string="API Application">
                 <header>
+                    <button name="action_set_active" type="object"
+                            string="Activate"
+                            class="oe_highlight"
+                            invisible="state == 'active'"
+                            groups="t4_coreapi.group_core_api_manager"/>
+                    <button name="action_set_inactive" type="object"
+                            string="Deactivate"
+                            invisible="state == 'inactive'"
+                            groups="t4_coreapi.group_core_api_manager"/>
                     <button name="action_view_credentials" type="object"
                             string="View Credentials"
                             invisible="not credentials_pending"
@@ -37,9 +59,13 @@
                             class="btn-warning"
                             invisible="not active_token_id"
                             groups="t4_coreapi.group_core_api_manager"/>
-                    <field name="state" widget="statusbar" statusbar_visible="active,inactive"/>
+                    <field name="state" widget="statusbar"
+                           statusbar_visible="active,inactive"
+                           options="{'clickable': '1'}"/>
                 </header>
                 <sheet>
+                    <widget name="web_ribbon" title="Inactive" bg_color="text-bg-danger"
+                            invisible="state == 'active'"/>
                     <div class="alert alert-info" role="alert" invisible="id">
                         Client ID and Client Secret are generated automatically when you save.
                         A popup will appear so you can copy them once.
@@ -66,10 +92,21 @@
                             <field name="last_auth_at"/>
                             <field name="last_auth_ip"/>
                             <field name="credentials_pending" invisible="1"/>
+                            <field name="active" invisible="1"/>
                         </group>
                     </group>
-                    <group string="Allowed APIs">
-                        <field name="endpoint_ids" widget="many2many_tags" nolabel="1"/>
+                    <group string="Allowed Server Actions">
+                        <field name="server_action_ids"
+                               widget="many2many_tags"
+                               nolabel="1"
+                               can_create="0"
+                               options="{'no_create': True, 'no_quick_create': True, 'no_create_edit': True, 'no_open': True}"
+                               context="{
+                                   'create': False,
+                                   'edit': False,
+                                   'delete': False,
+                                   'list_view_ref': 't4_coreapi.view_ir_actions_server_core_api_picker_list',
+                               }"/>
                     </group>
                     <group string="Security (DDoS / Access)">
                         <group>
@@ -91,6 +128,7 @@
         <field name="name">Applications</field>
         <field name="res_model">core.api.application</field>
         <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_filter_active': 1}</field>
     </record>
 
 </odoo>
