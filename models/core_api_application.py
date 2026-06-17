@@ -68,13 +68,13 @@ class CoreApiApplication(models.Model):
         copy=False,
         readonly=True,
     )
-    server_action_ids = fields.Many2many(
-        'ir.actions.server',
-        'core_api_application_server_action_rel',
+    endpoint_ids = fields.Many2many(
+        'core.api.endpoint',
+        'core_api_application_endpoint_rel',
         'application_id',
-        'server_action_id',
-        string='Allowed Server Actions',
-        help='Server actions this application is allowed to trigger via gateway routes.',
+        'endpoint_id',
+        string='Allowed APIs',
+        help='Gateway routes this application is allowed to call.',
     )
     rate_limit_per_minute = fields.Integer(
         string='API Rate Limit (/min)',
@@ -307,49 +307,29 @@ class CoreApiApplication(models.Model):
         })
         return application
 
-    def check_api_access(self, endpoint):
-        """Check application may call this gateway route (via its server action)."""
+    def check_api_access(self, endpoint_code):
         self.ensure_one()
-        endpoint.ensure_one()
         if self.state != 'active':
             raise AccessError(_('Application "%s" is inactive.', self.name))
-        if not endpoint.action_id:
+        allowed = self.endpoint_ids.mapped('code')
+        if endpoint_code not in allowed:
             raise AccessError(
-                _('Gateway route "%(route)s" has no server action configured.',
-                  route=endpoint.name)
-            )
-        if endpoint.action_id not in self.server_action_ids:
-            raise AccessError(
-                _('Application "%(app)s" is not allowed to run server action: %(action)s',
-                  app=self.name, action=endpoint.action_id.display_name)
+                _('Application "%(app)s" is not allowed to access API: %(endpoint)s',
+                  app=self.name, endpoint=endpoint_code)
             )
         return True
 
-    def check_api_access_by_code(self, endpoint_code):
-        """Backward-compatible check by gateway route code."""
-        self.ensure_one()
-        endpoint = self.env['core.api.endpoint'].sudo().search([
-            ('code', '=', endpoint_code),
-            ('active', '=', True),
-        ], limit=1)
-        if not endpoint:
-            raise AccessError(
-                _('Unknown API endpoint code: %(endpoint)s', endpoint=endpoint_code)
-            )
-        return self.check_api_access(endpoint)
-
     def check_route_access(self, path, method=None):
-        """Match request path against allowed gateway routes."""
+        """Match request path against allowed endpoint route patterns."""
         self.ensure_one()
-        if not self.server_action_ids:
-            raise AccessError(_('Application "%s" has no allowed server actions configured.', self.name))
-        if method is None and request:
-            method = request.httprequest.method
-        endpoint = self.env['core.api.endpoint'].find_for_request(path, method or 'GET')
-        if not endpoint:
-            raise AccessError(
-                _('Application "%(app)s" is not allowed to call route: %(route)s',
-                  app=self.name, route=path)
-            )
-        self.check_api_access(endpoint)
-        return endpoint.code
+        if not self.endpoint_ids:
+            raise AccessError(_('Application "%s" has no allowed APIs configured.', self.name))
+        normalized = (path or '').split('?')[0].rstrip('/') or '/'
+        for endpoint in self.endpoint_ids:
+            pattern = (endpoint.route_pattern or '').rstrip('/') or '/'
+            if normalized == pattern or normalized.startswith(f'{pattern}/'):
+                return endpoint.code
+        raise AccessError(
+            _('Application "%(app)s" is not allowed to call route: %(route)s',
+              app=self.name, route=path)
+        )

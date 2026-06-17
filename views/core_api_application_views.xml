@@ -95,18 +95,12 @@
                             <field name="active" invisible="1"/>
                         </group>
                     </group>
-                    <group string="Allowed Server Actions">
-                        <field name="server_action_ids"
+                    <group string="Allowed APIs">
+                        <field name="endpoint_ids"
                                widget="many2many_tags"
                                nolabel="1"
                                can_create="0"
-                               options="{'no_create': True, 'no_quick_create': True, 'no_create_edit': True, 'no_open': True}"
-                               context="{
-                                   'create': False,
-                                   'edit': False,
-                                   'delete': False,
-                                   'list_view_ref': 't4_coreapi.view_ir_actions_server_core_api_picker_list',
-                               }"/>
+                               options="{'no_create': True, 'no_quick_create': True, 'no_create_edit': True, 'no_open': True}"/>
                     </group>
                     <group string="Security (DDoS / Access)">
                         <group>

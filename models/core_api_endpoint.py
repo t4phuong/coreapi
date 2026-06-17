@@ -142,7 +142,7 @@ class CoreApiEndpoint(models.Model):
     def dispatch(self, application):
         self.ensure_one()
         if application:
-            application.check_api_access(self)
+            application.check_api_access(self.code)
         return self._run_server_action(application, request.httprequest)
 
     @api.model

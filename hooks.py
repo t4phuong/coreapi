@@ -132,27 +132,6 @@ def run_legacy_migrations(cr):
         _rename_xmlid(cr, old_name, new_name)
 
 
-def migrate_endpoint_ids_to_server_actions(env):
-    if not _table_exists(env.cr, 'core_api_application_endpoint_rel'):
-        return
-    if not _table_exists(env.cr, 'core_api_application_server_action_rel'):
-        return
-    env.cr.execute("""
-        SELECT DISTINCT rel.application_id, e.action_id
-        FROM core_api_application_endpoint_rel rel
-        JOIN core_api_endpoint e ON e.id = rel.endpoint_id
-        WHERE e.action_id IS NOT NULL
-    """)
-    rows = env.cr.fetchall()
-    if not rows:
-        return
-    Application = env['core.api.application'].sudo()
-    for app_id, action_id in rows:
-        app = Application.browse(app_id)
-        if action_id not in app.server_action_ids.ids:
-            app.write({'server_action_ids': [(4, action_id)]})
-
-
 def post_load():
     """Allow ?db= on API routes when multiple databases are installed."""
     import odoo.http
