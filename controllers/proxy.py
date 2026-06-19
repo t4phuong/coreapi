@@ -3,10 +3,8 @@ import logging, json
 from odoo import http
 from odoo.http import request
 from odoo.addons.t4_coreapi.controllers.base import CoreApiController
-from odoo.addons.t4_coreapi.utils import (
-    log_core_api,
-    get_context,
-)
+from odoo.addons.t4_coreapi.utils import log_core_api
+
 _logger = logging.getLogger(__name__)
 
 class CoreApiProxyController(CoreApiController):
@@ -25,13 +23,5 @@ class CoreApiProxyController(CoreApiController):
     def gateway(self, subpath, **kw):
         path = f'/api/v1/{subpath}' 
         application = self._get_application()
-
-        ctx = get_context(
-            kw, 
-            request.httprequest.get_data()
-        )
-
-        return request.env['core.api.endpoint'].with_context(
-            **ctx
-        ).dispatch_request(path, application)
+        return request.env['core.api.endpoint'].dispatch_request(path, application)
 

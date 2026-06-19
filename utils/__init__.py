@@ -4,9 +4,9 @@ from .security import check_ip_allowed, get_client_ip
 from .core_api_utils import (
     endpoint,
     route,
-    get_context,
     get_params,
     get_body,
+    set_response,
 )
 from .exception import (
     CoreApiBadRequest,
@@ -24,9 +24,9 @@ __all__ = [
     'log_core_api',
     'check_ip_allowed',
     'get_client_ip',
-    'get_context',
     'get_params',
     'get_body',
+    'set_response',
     'CoreApiBadRequest',
     'CoreApiInvalidBody',
     'CoreApiMissingData',

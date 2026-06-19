@@ -125,10 +125,7 @@ class CoreApiEndpoint(models.Model):
         if response_data is None:
             response_data = {
                 'status': 'ok',
-                'message': (
-                    'Server action ran but returned no JSON. '
-                    'Call env["core.api.application"].set_api_response({...}) in the action code.'
-                ),
+                'message': "Successful!",
             }
         elif not isinstance(response_data, dict):
             raise CoreApiInvalidResponse(
