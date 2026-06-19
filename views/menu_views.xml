@@ -1,33 +1,86 @@
-<?xml version="1.0" encoding="utf-8"?>
-<odoo>
-
-    <menuitem id="menu_core_api_root"
-              name="Core API"
-              groups="t4_coreapi.group_core_api_manager"
-              sequence="90"/>
-
-    <menuitem id="menu_core_api_applications"
-              name="Applications"
-              parent="menu_core_api_root"
-              action="action_core_api_application"
-              sequence="10"/>
-
-    <menuitem id="menu_core_api_endpoints"
-              name="Gateway Routes"
-              parent="menu_core_api_root"
-              action="action_core_api_endpoint"
-              sequence="20"/>
-
-    <menuitem id="menu_core_api_tokens"
-              name="Access Tokens"
-              parent="menu_core_api_root"
-              action="action_core_api_token"
-              sequence="30"/>
-
-    <menuitem id="menu_core_api_logs"
-              name="Request Logs"
-              parent="menu_core_api_root"
-              action="action_core_api_log"
-              sequence="40"/>
-
-</odoo>
+<?xml version="1.0" encoding="utf-8"?>
+
+<odoo>
+
+
+
+    <menuitem id="menu_core_api_root"
+
+              name="Core API"
+
+              groups="t4_coreapi.group_core_api_manager"
+
+              sequence="90"/>
+
+
+
+    <menuitem id="menu_core_api_applications"
+
+              name="Applications"
+
+              parent="menu_core_api_root"
+
+              action="action_core_api_application"
+
+              sequence="10"/>
+
+
+
+    <menuitem id="menu_core_api_endpoints"
+
+              name="Gateway Routes"
+
+              parent="menu_core_api_root"
+
+              action="action_core_api_endpoint"
+
+              sequence="20"/>
+
+
+
+    <menuitem id="menu_core_api_tokens"
+
+              name="Access Tokens"
+
+              parent="menu_core_api_root"
+
+              action="action_core_api_token"
+
+              sequence="30"/>
+
+
+
+    <menuitem id="menu_core_api_logs"
+
+              name="Request Logs"
+
+              parent="menu_core_api_root"
+
+              action="action_core_api_log"
+
+              sequence="40"/>
+
+
+    <!-- CONFIGURATIONS -->
+    <menuitem id="menu_core_api_configuration" 
+      
+              name="Configuration" 
+
+              parent="menu_core_api_root"
+
+              sequence="200"/>
+
+    <menuitem id="menu_core_api_action_endpoint" 
+                
+              name="Endpoints" 
+      
+              parent="menu_core_api_configuration" 
+      
+              action="action_endpoint_manager_window" 
+      
+              sequence="50"/>
+
+
+
+</odoo>
+

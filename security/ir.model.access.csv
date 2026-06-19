@@ -4,3 +4,4 @@ access_core_api_endpoint_manager,core.api.endpoint manager,model_core_api_endpoi
 access_core_api_token_manager,core.api.token manager,model_core_api_token,t4_coreapi.group_core_api_manager,1,1,1,1
 access_core_api_application_secret_wizard_manager,core.api.application.secret.wizard manager,model_core_api_application_secret_wizard,t4_coreapi.group_core_api_manager,1,1,1,1
 access_core_api_log_manager,core.api.log manager,model_core_api_log,t4_coreapi.group_core_api_manager,1,0,0,0
+access_core_api_action_endpoint_manager,action.endpoint.manager,model_action_endpoint_manager,base.group_user,1,1,1,1
