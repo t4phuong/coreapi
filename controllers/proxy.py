@@ -23,7 +23,7 @@ class CoreApiProxyController(CoreApiController):
     )
     @log_core_api('api')
     def gateway(self, subpath, **kw):
-        path = f'/api/v1/{subpath}'
+        path = f'/api/v1/{subpath}' 
         application = self._get_application()
 
         ctx = get_context(

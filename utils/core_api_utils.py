@@ -3,6 +3,8 @@ import json
 import logging
 from odoo.http import request
 
+from odoo.addons.t4_coreapi.utils.exception import ensure_dict
+
 
 _logger = logging.getLogger(__name__)
 
@@ -99,4 +101,7 @@ def get_body(obj=None):
     """
     ctx = _extract_context(obj)
     api_ctx = ctx.get(_CONTEXT_NAME, {})
-    return api_ctx.get('body', {})
+    body = api_ctx.get('body', {})
+    if body is None:
+        body = {}
+    return ensure_dict(body)

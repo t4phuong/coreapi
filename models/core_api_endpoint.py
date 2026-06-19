@@ -9,6 +9,11 @@ from odoo import _, api, fields, models
 from odoo.exceptions import ValidationError
 from odoo.http import request
 
+from odoo.addons.t4_coreapi.utils.exception import (
+    CoreApiBadRequest,
+    CoreApiInvalidResponse,
+)
+
 _logger = logging.getLogger(__name__)
 
 
@@ -125,6 +130,10 @@ class CoreApiEndpoint(models.Model):
                     'Call env["core.api.application"].set_api_response({...}) in the action code.'
                 ),
             }
+        elif not isinstance(response_data, dict):
+            raise CoreApiInvalidResponse(
+                _('API response must be a dict. Use set_api_response({...}).')
+            )
 
         status = 200
         if isinstance(response_data, dict):
@@ -139,11 +148,26 @@ class CoreApiEndpoint(models.Model):
             status=status,
         )
 
+    def _error_response(self, message, status=400):
+        return request.make_response(
+            json.dumps({'status': 'error', 'message': message}),
+            headers=[('Content-Type', 'application/json')],
+            status=status,
+        )
+
     def dispatch(self, application):
         self.ensure_one()
-        if application:
-            application.check_api_access(self.code)
-        return self._run_server_action(application, request.httprequest)
+        try:
+            if application:
+                application.check_api_access(self.code)
+            return self._run_server_action(application, request.httprequest)
+        except CoreApiBadRequest as e:
+            return self._error_response(str(e), 400)
+        except BadRequest as e:
+            return self._error_response(str(e), 400)
+        except ValidationError as e:
+            return self._error_response(str(e), 400)
+
 
     @api.model
     def dispatch_request(self, path, application):
