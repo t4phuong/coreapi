@@ -1,20 +1,25 @@
 # Part of T4 Core API. See LICENSE file for full copyright and licensing details.
-import logging, json
+import logging
+
+from werkzeug.exceptions import NotFound
+
 from odoo import http
 from odoo.http import request
+
 from odoo.addons.t4_coreapi.controllers.base import CoreApiController
 from odoo.addons.t4_coreapi.utils import (
     log_core_api,
     get_context,
 )
+
 _logger = logging.getLogger(__name__)
 
+
 class CoreApiProxyController(CoreApiController):
-    """API gateway — applications call Odoo routes; Odoo validates then runs Server Actions."""
+    """HTTP gateway: validate token, then run the matching server action."""
+
     @http.route(
-        [
-            '/api/v1/<path:subpath>',
-        ],
+        '/api/<path:subpath>',
         type='http',
         auth='core_api',
         methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -23,15 +28,23 @@ class CoreApiProxyController(CoreApiController):
     )
     @log_core_api('api')
     def gateway(self, subpath, **kw):
-        path = f'/api/v1/{subpath}'
+        """Handle all /api/<version>/* routes for authenticated applications."""
+        version_code, _, rest = (subpath or '').partition('/')
+        version = request.env['core.api.version'].sudo().get_active_by_code(version_code)
+        if not version:
+            raise NotFound(f'Unknown or inactive API version: {version_code}')
+
+        if rest == 'auth/token' or rest.startswith('auth/token/'):
+            raise NotFound('Use POST on the dedicated auth endpoint for token requests.')
+
+        path = f'{version.path_prefix.rstrip("/")}/{rest}'.rstrip('/') if rest else version.path_prefix.rstrip('/')
         application = self._get_application()
 
         ctx = get_context(
-            kw, 
+            kw,
             request.httprequest.get_data()
         )
 
         return request.env['core.api.endpoint'].with_context(
             **ctx
         ).dispatch_request(path, application)
-

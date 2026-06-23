@@ -26,18 +26,6 @@
 
 
 
-    <menuitem id="menu_core_api_endpoints"
-
-              name="Gateway Routes"
-
-              parent="menu_core_api_root"
-
-              action="action_core_api_endpoint"
-
-              sequence="20"/>
-
-
-
     <menuitem id="menu_core_api_tokens"
 
               name="Access Tokens"
@@ -46,7 +34,7 @@
 
               action="action_core_api_token"
 
-              sequence="30"/>
+              sequence="20"/>
 
 
 
@@ -58,7 +46,7 @@
 
               action="action_core_api_log"
 
-              sequence="40"/>
+              sequence="30"/>
 
 
     <!-- CONFIGURATIONS -->
@@ -69,6 +57,12 @@
               parent="menu_core_api_root"
 
               sequence="200"/>
+
+    <menuitem id="menu_core_api_versions"
+              name="API Versions"
+              parent="menu_core_api_configuration"
+              action="action_core_api_version"
+              sequence="10"/>
 
     <menuitem id="menu_core_api_action_endpoint" 
                 

@@ -68,13 +68,17 @@ class CoreApiApplication(models.Model):
         copy=False,
         readonly=True,
     )
-    endpoint_ids = fields.Many2many(
+    endpoint_ids = fields.One2many(
         'core.api.endpoint',
-        'core_api_application_endpoint_rel',
         'application_id',
-        'endpoint_id',
-        string='Allowed APIs',
-        help='Gateway routes this application is allowed to call.',
+        string='Gateway Routes',
+        help='API routes owned by this application. Each application manages its own routes.',
+    )
+    default_version_id = fields.Many2one(
+        'core.api.version',
+        string='Default API Version',
+        default=lambda self: self.env['core.api.version'].get_default_version().id,
+        help='Used in the Authentication Guide and as the default when adding new routes.',
     )
     rate_limit_per_minute = fields.Integer(
         string='API Rate Limit (/min)',
@@ -95,26 +99,89 @@ class CoreApiApplication(models.Model):
     last_auth_at = fields.Datetime(readonly=True)
     last_auth_ip = fields.Char(readonly=True)
     notes = fields.Text()
+    api_base_url = fields.Char(
+        string='API Base URL',
+        compute='_compute_api_integration_guide',
+    )
+    auth_endpoint_url = fields.Char(
+        string='Token URL',
+        compute='_compute_api_integration_guide',
+    )
+    auth_curl_example = fields.Text(
+        string='Token Request (cURL)',
+        compute='_compute_api_integration_guide',
+    )
+    api_call_curl_example = fields.Text(
+        string='API Call (cURL)',
+        compute='_compute_api_integration_guide',
+    )
+    api_database_name = fields.Char(
+        string='Database Name',
+        compute='_compute_api_integration_guide',
+        help='PostgreSQL database name. Required for external API calls when multiple databases exist.',
+    )
 
     _client_id_unique = models.Constraint('unique(client_id)', 'Client ID must be unique.')
 
     @api.depends('state')
     def _compute_active(self):
+        """Mirror application state into the active boolean field."""
         for rec in self:
             rec.active = rec.state == 'active'
 
     @api.depends('token_ids')
     def _compute_token_count(self):
+        """Count issued tokens for the application stat button."""
         for rec in self:
             rec.token_count = len(rec.token_ids)
 
     @api.depends('log_ids')
     def _compute_log_count(self):
+        """Count request logs for the application stat button."""
         for rec in self:
             rec.log_count = len(rec.log_ids)
 
+    @api.depends('client_id', 'default_version_id', 'default_version_id.code', 'endpoint_ids.route_pattern', 'endpoint_ids.version_id')
+    def _compute_api_integration_guide(self):
+        """Build auth URLs and cURL samples shown on the application form."""
+        base_url = (
+            self.env['ir.config_parameter'].sudo().get_param('web.base.url') or ''
+        ).rstrip('/')
+        for rec in self:
+            version = rec.default_version_id or self.env['core.api.version'].get_default_version()
+            version_code = version.code if version else 'v1'
+            auth_path = f'/api/{version_code}/auth/token'
+            db_name = self.env.cr.dbname
+            rec.api_database_name = db_name
+            rec.api_base_url = base_url
+            auth_url = f'{base_url}{auth_path}' if base_url else auth_path
+            rec.auth_endpoint_url = auth_url
+            client_id = rec.client_id or '<client_id>'
+            rec.auth_curl_example = (
+                f'curl -X POST "{auth_url}?db={db_name}" \\\n'
+                f'  -H "Content-Type: application/json" \\\n'
+                f'  -H "X-Odoo-Database: {db_name}" \\\n'
+                f'  -d \'{{"grant_type": "client_credentials", '
+                f'"client_id": "{client_id}", '
+                f'"client_secret": "<client_secret>"}}\''
+            )
+            sample_endpoints = rec.endpoint_ids.filtered(
+                lambda e: not version or e.version_id == version
+            ) or rec.endpoint_ids
+            sample_route = (
+                sample_endpoints[:1].route_pattern or f'/api/{version_code}/your-route'
+            ).rstrip('/')
+            sample_url = f'{base_url}{sample_route}?db={db_name}' if base_url else f'{sample_route}?db={db_name}'
+            rec.api_call_curl_example = (
+                f'curl -X GET "{sample_url}" \\\n'
+                f'  -H "Authorization: Bearer <access_token>" \\\n'
+                f'  -H "Content-Type: application/json" \\\n'
+                f'  -H "X-Odoo-Database: {db_name}"'
+            )
+
     @api.depends('token_ids.active', 'token_ids.expiration_date')
     def _compute_active_token(self):
+        """Pick the current valid token for display on the application form."""
         now = fields.Datetime.now()
         for rec in self:
             token = rec.token_ids.filtered(
@@ -125,6 +192,7 @@ class CoreApiApplication(models.Model):
 
     @api.model_create_multi
     def create(self, vals_list):
+        """Generate client credentials when a new application is created."""
         prepared = []
         for vals in vals_list:
             vals = dict(vals)
@@ -150,9 +218,11 @@ class CoreApiApplication(models.Model):
 
     @api.model
     def _generate_client_id(self):
+        """Return a unique client_id value for a new application."""
         return f'app_{secrets.token_hex(16)}'
 
     def _store_pending_secret(self, plaintext_secret):
+        """Keep the plaintext secret in the user session until the wizard opens."""
         self.ensure_one()
         if request and getattr(request, 'session', None) is not None:
             pending = dict(request.session.get('core_api_application_secrets', {}))
@@ -160,6 +230,7 @@ class CoreApiApplication(models.Model):
             request.session['core_api_application_secrets'] = pending
 
     def _pop_pending_secret(self):
+        """Read and remove the plaintext secret from the user session."""
         self.ensure_one()
         if request and getattr(request, 'session', None) is not None:
             pending = dict(request.session.get('core_api_application_secrets', {}))
@@ -167,6 +238,7 @@ class CoreApiApplication(models.Model):
         return None
 
     def _clear_pending_secret(self):
+        """Discard any pending plaintext secret from the user session."""
         self.ensure_one()
         if request and getattr(request, 'session', None) is not None:
             pending = dict(request.session.get('core_api_application_secrets', {}))
@@ -174,6 +246,7 @@ class CoreApiApplication(models.Model):
             request.session['core_api_application_secrets'] = pending
 
     def _open_secret_wizard(self, plaintext_secret):
+        """Open the one-time credentials popup for the current application."""
         self.ensure_one()
         wizard = self.env['core.api.application.secret.wizard'].create({
             'application_id': self.id,
@@ -190,6 +263,7 @@ class CoreApiApplication(models.Model):
         }
 
     def action_view_credentials(self):
+        """Show credentials once after create when they are still in session."""
         self.ensure_one()
         if not self.credentials_pending:
             raise UserError(_('Client secret was already displayed. Use "Regenerate Secret" if needed.'))
@@ -202,6 +276,7 @@ class CoreApiApplication(models.Model):
         return self._open_secret_wizard(plaintext)
 
     def action_regenerate_secret(self):
+        """Issue a new client secret and show it in the credentials wizard."""
         self.ensure_one()
         if self.state != 'active':
             raise UserError(_('Cannot regenerate secret for an inactive application.'))
@@ -210,12 +285,15 @@ class CoreApiApplication(models.Model):
         return self._open_secret_wizard(plaintext)
 
     def action_set_active(self):
+        """Activate the application from the form header."""
         self.write({'state': 'active'})
 
     def action_set_inactive(self):
+        """Deactivate the application from the form header."""
         self.write({'state': 'inactive'})
 
     def action_revoke_token(self):
+        """Revoke the current active token for this application."""
         self.ensure_one()
         token = self.active_token_id
         if not token:
@@ -233,6 +311,7 @@ class CoreApiApplication(models.Model):
         }
 
     def action_view_tokens(self):
+        """Open the token list filtered to this application."""
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
@@ -244,6 +323,7 @@ class CoreApiApplication(models.Model):
         }
 
     def action_view_logs(self):
+        """Open the request log list filtered to this application."""
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
@@ -259,7 +339,7 @@ class CoreApiApplication(models.Model):
         request.core_api_response = data
 
     def get_api_context(self):
-        """Request data injected by the gateway — use in Server Action code."""
+        """Return request data injected by the gateway for server action code."""
         self.ensure_one()
         ctx = self.env.context
         return {
@@ -271,6 +351,7 @@ class CoreApiApplication(models.Model):
         }
 
     def check_ip_allowed(self, ip_address):
+        """Raise AccessError when the client IP is not in the allowlist."""
         self.ensure_one()
         from odoo.addons.t4_coreapi.utils.security import check_ip_allowed
         if not check_ip_allowed(self.allowed_ips, ip_address):
@@ -281,11 +362,13 @@ class CoreApiApplication(models.Model):
         return True
 
     def check_api_rate_limit(self):
+        """Raise AccessError when API rate limit is exceeded."""
         from odoo.addons.t4_coreapi.utils.security import check_application_api_rate_limit
         check_application_api_rate_limit(self)
         return True
 
     def check_auth_rate_limit(self):
+        """Raise AccessError when auth rate limit is exceeded."""
         from odoo.addons.t4_coreapi.utils.security import check_application_auth_rate_limit
         check_application_auth_rate_limit(self)
         return True
@@ -307,12 +390,15 @@ class CoreApiApplication(models.Model):
         })
         return application
 
-    def check_api_access(self, endpoint_code):
+    def check_api_access(self, endpoint_code, version_id=None):
+        """Raise AccessError when the application cannot call the endpoint code."""
         self.ensure_one()
         if self.state != 'active':
             raise AccessError(_('Application "%s" is inactive.', self.name))
-        allowed = self.endpoint_ids.mapped('code')
-        if endpoint_code not in allowed:
+        endpoints = self.endpoint_ids.filtered(lambda e: e.code == endpoint_code)
+        if version_id:
+            endpoints = endpoints.filtered(lambda e: e.version_id.id == version_id)
+        if not endpoints:
             raise AccessError(
                 _('Application "%(app)s" is not allowed to access API: %(endpoint)s',
                   app=self.name, endpoint=endpoint_code)

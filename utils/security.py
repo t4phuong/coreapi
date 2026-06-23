@@ -7,13 +7,14 @@ from odoo.http import request
 
 
 def get_client_ip():
+    """Return the remote IP address from the current HTTP request."""
     if not request:
         return None
     return request.httprequest.environ.get('REMOTE_ADDR')
 
 
 def check_ip_allowed(allowed_ips_text, ip_address):
-    """Return True if IP is allowed. Empty allowlist = allow any."""
+    """Return True when the IP matches the allowlist. Empty list allows any IP."""
     if not allowed_ips_text or not ip_address:
         return True
     lines = [ln.strip() for ln in allowed_ips_text.splitlines() if ln.strip()]
@@ -36,6 +37,7 @@ def check_ip_allowed(allowed_ips_text, ip_address):
 
 
 def check_rate_limit(env, domain_extra, limit, error_message):
+    """Raise AccessError when recent log count exceeds the configured limit."""
     if not limit:
         return True
     count = env['core.api.log'].sudo().count_recent(domain_extra, minutes=1)
@@ -45,6 +47,7 @@ def check_rate_limit(env, domain_extra, limit, error_message):
 
 
 def check_application_api_rate_limit(application):
+    """Enforce per-application API call rate limits."""
     application.ensure_one()
     check_rate_limit(
         application.env,
@@ -55,6 +58,7 @@ def check_application_api_rate_limit(application):
 
 
 def check_application_auth_rate_limit(application):
+    """Enforce per-application token request rate limits."""
     application.ensure_one()
     check_rate_limit(
         application.env,
@@ -65,12 +69,12 @@ def check_application_auth_rate_limit(application):
 
 
 def check_ip_auth_rate_limit(env, ip_address, limit=30):
-    """Global per-IP auth throttle when application is unknown or before lookup."""
+    """Enforce global per-IP throttling on the auth endpoint."""
     if not ip_address or not limit:
         return True
     check_rate_limit(
         env,
-        [('ip_address', '=', ip_address), ('event_type', '=', 'auth'), ('route', '=', '/api/v1/auth/token')],
+        [('ip_address', '=', ip_address), ('event_type', '=', 'auth'), ('route', '=like', '/api/%/auth/token')],
         limit,
         f'Too many authentication attempts from IP {ip_address}. Try again later.',
     )

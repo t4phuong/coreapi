@@ -94,6 +94,7 @@ class CoreApiToken(models.Model):
         return empty_application, empty_token
 
     def action_revoke(self):
+        """Deactivate the selected token records."""
         if not self.env.user.has_group('t4_coreapi.group_core_api_manager'):
             raise AccessError(_('Only Core API managers can revoke tokens.'))
         for token in self:
@@ -106,6 +107,7 @@ class CoreApiToken(models.Model):
 
     @api.autovacuum
     def _gc_expired_tokens(self):
+        """Deactivate expired tokens during the autovacuum job."""
         expired = self.sudo().search([
             ('active', '=', True),
             ('expiration_date', '!=', False),

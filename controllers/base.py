@@ -2,16 +2,17 @@
 from odoo import http
 from odoo.http import request
 
-class CoreApiController(http.Controller):
 
-    """Base controller — inherit when adding custom secured Core API endpoints."""
+class CoreApiController(http.Controller):
+    """Base controller. Inherit when adding custom secured Core API endpoints."""
+
     def _get_application(self):
+        """Return the authenticated application from request context."""
         application_id = request.env.context.get('core_api_application_id')
         if not application_id:
             return request.env['core.api.application']
         return request.env['core.api.application'].sudo().browse(application_id)
 
     def _get_device(self):
-        """Backward-compatible alias."""
+        """Backward-compatible alias for _get_application."""
         return self._get_application()
-
