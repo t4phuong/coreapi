@@ -38,16 +38,19 @@ class CoreApiVersion(models.Model):
     @api.depends('code')
     def _compute_endpoint_count(self):
         """Count gateway routes linked to this version."""
+        if not self.ids:
+            return
         endpoint_data = self.env['core.api.endpoint'].read_group(
             [('version_id', 'in', self.ids)],
-            ['version_id'],
+            [],
             ['version_id'],
         )
-        counts = {
-            row['version_id'][0]: row['__count']
-            for row in endpoint_data
-            if row.get('version_id')
-        }
+        counts = {}
+        for row in endpoint_data:
+            version = row.get('version_id')
+            if not version:
+                continue
+            counts[version[0]] = row.get('version_id_count', row.get('__count', 0))
         for rec in self:
             rec.endpoint_count = counts.get(rec.id, 0)
 

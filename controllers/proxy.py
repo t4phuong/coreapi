@@ -11,7 +11,6 @@ from odoo.addons.t4_coreapi.utils import (
     log_core_api,
     get_context,
 )
-from odoo.addons.t4_coreapi.utils import log_core_api
 
 _logger = logging.getLogger(__name__)
 
@@ -43,13 +42,9 @@ class CoreApiProxyController(CoreApiController):
 
         ctx = get_context(
             kw,
-            request.httprequest.get_data()
+            request.httprequest.get_data(),
         )
 
         return request.env['core.api.endpoint'].with_context(
-            **ctx
+            **ctx,
         ).dispatch_request(path, application)
-        path = f'/api/v1/{subpath}' 
-        application = self._get_application()
-        return request.env['core.api.endpoint'].dispatch_request(path, application)
-

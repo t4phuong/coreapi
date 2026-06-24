@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 import inspect
-import textwrap
 from odoo import models, fields, api, _
-
 class ActionEndpointManager(models.Model):
     _name = 'action.endpoint.manager'
     _description = 'Action Endpoint Manager'
@@ -89,3 +87,4 @@ class ActionEndpointManager(models.Model):
                 },
             }
         }
+
