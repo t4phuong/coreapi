@@ -13,6 +13,17 @@ def get_client_ip():
     return request.httprequest.environ.get('REMOTE_ADDR')
 
 
+def get_request_hostname(httprequest=None):
+    """Return the normalized hostname from the HTTP request (without port)."""
+    httprequest = httprequest or (request.httprequest if request else None)
+    if not httprequest:
+        return ''
+    host = (httprequest.host or '').strip().lower()
+    if host.startswith('['):
+        return host
+    return host.split(':')[0].strip('.')
+
+
 def check_ip_allowed(allowed_ips_text, ip_address):
     """Return True when the IP matches the allowlist. Empty list allows any IP."""
     if not allowed_ips_text or not ip_address:

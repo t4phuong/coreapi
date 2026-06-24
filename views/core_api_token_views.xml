@@ -8,6 +8,7 @@
             <list decoration-muted="not active">
                 <field name="name"/>
                 <field name="application_name"/>
+                <field name="token_type"/>
                 <field name="client_id"/>
                 <field name="active"/>
                 <field name="create_date"/>
@@ -36,6 +37,8 @@
                     <group>
                         <field name="name"/>
                         <field name="application_id"/>
+                        <field name="token_type"/>
+                        <field name="token_pair_id"/>
                         <field name="client_id"/>
                         <field name="active"/>
                         <field name="expiration_date"/>

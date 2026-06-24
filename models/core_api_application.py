@@ -45,9 +45,15 @@ class CoreApiApplication(models.Model):
     )
     active = fields.Boolean(default=True, compute='_compute_active', store=True)
     token_ttl_hours = fields.Integer(
-        string='Token TTL (hours)',
+        string='Access Token TTL (hours)',
         default=24,
         help='Lifetime of issued access tokens. 0 = non-expiring (not recommended).',
+    )
+    refresh_token_ttl_hours = fields.Integer(
+        string='Refresh Token TTL (hours)',
+        default=168,
+        help='Lifetime of refresh tokens. When both access and refresh tokens expire, '
+             'the application must authenticate again with client credentials. 0 = non-expiring.',
     )
     token_ids = fields.One2many('core.api.token', 'application_id')
     token_count = fields.Integer(compute='_compute_token_count')
@@ -141,37 +147,56 @@ class CoreApiApplication(models.Model):
         for rec in self:
             rec.log_count = len(rec.log_ids)
 
-    @api.depends('client_id', 'default_version_id', 'default_version_id.code', 'endpoint_ids.route_pattern', 'endpoint_ids.version_id')
+    @api.depends(
+        'client_id',
+        'default_version_id',
+        'default_version_id.code',
+        'default_version_id.path_prefix',
+        'default_version_id.public_base_url',
+        'default_version_id.domain_id.base_url',
+        'endpoint_ids.route_pattern',
+        'endpoint_ids.version_id',
+    )
     def _compute_api_integration_guide(self):
         """Build auth URLs and cURL samples shown on the application form."""
-        base_url = (
-            self.env['ir.config_parameter'].sudo().get_param('web.base.url') or ''
-        ).rstrip('/')
         for rec in self:
             version = rec.default_version_id or self.env['core.api.version'].get_default_version()
-            version_code = version.code if version else 'v1'
-            auth_path = f'/api/{version_code}/auth/token'
+            version_public = (version.public_base_url if version else '').rstrip('/')
+            if not version_public:
+                version_public = (
+                    self.env['ir.config_parameter'].sudo().get_param('web.base.url') or ''
+                ).rstrip('/')
+                if version:
+                    version_public = f'{version_public}{(version.path_prefix or "/api/v1").rstrip("/")}'
+            auth_url = f'{version_public}/auth/token'
             db_name = self.env.cr.dbname
             rec.api_database_name = db_name
-            rec.api_base_url = base_url
-            auth_url = f'{base_url}{auth_path}' if base_url else auth_path
+            rec.api_base_url = version_public
             rec.auth_endpoint_url = auth_url
             client_id = rec.client_id or '<client_id>'
             rec.auth_curl_example = (
+                f'# 1) Initial login — send client_id/secret once\n'
                 f'curl -X POST "{auth_url}?db={db_name}" \\\n'
                 f'  -H "Content-Type: application/json" \\\n'
                 f'  -H "X-Odoo-Database: {db_name}" \\\n'
                 f'  -d \'{{"grant_type": "client_credentials", '
                 f'"client_id": "{client_id}", '
-                f'"client_secret": "<client_secret>"}}\''
+                f'"client_secret": "<client_secret>"}}\'\n\n'
+                f'# Response: access_token, refresh_token, expires_in, refresh_expires_in\n\n'
+                f'# 2) When access_token expires — refresh without client_secret\n'
+                f'curl -X POST "{auth_url}?db={db_name}" \\\n'
+                f'  -H "Content-Type: application/json" \\\n'
+                f'  -H "X-Odoo-Database: {db_name}" \\\n'
+                f'  -d \'{{"grant_type": "refresh_token", '
+                f'"refresh_token": "<refresh_token>"}}\''
             )
             sample_endpoints = rec.endpoint_ids.filtered(
                 lambda e: not version or e.version_id == version
             ) or rec.endpoint_ids
-            sample_route = (
-                sample_endpoints[:1].route_pattern or f'/api/{version_code}/your-route'
-            ).rstrip('/')
-            sample_url = f'{base_url}{sample_route}?db={db_name}' if base_url else f'{sample_route}?db={db_name}'
+            sample_suffix = (
+                sample_endpoints[:1].route_suffix if sample_endpoints else 'your-route'
+            )
+            sample_url = f'{version_public}/{sample_suffix}?db={db_name}'
             rec.api_call_curl_example = (
                 f'curl -X GET "{sample_url}" \\\n'
                 f'  -H "Authorization: Bearer <access_token>" \\\n'
@@ -179,13 +204,14 @@ class CoreApiApplication(models.Model):
                 f'  -H "X-Odoo-Database: {db_name}"'
             )
 
-    @api.depends('token_ids.active', 'token_ids.expiration_date')
+    @api.depends('token_ids.active', 'token_ids.expiration_date', 'token_ids.token_type')
     def _compute_active_token(self):
-        """Pick the current valid token for display on the application form."""
+        """Pick the current valid access token for display on the application form."""
         now = fields.Datetime.now()
         for rec in self:
             token = rec.token_ids.filtered(
-                lambda t: t.active
+                lambda t: t.token_type == 'access'
+                and t.active
                 and (not t.expiration_date or t.expiration_date >= now)
             )[:1]
             rec.active_token_id = token

@@ -28,11 +28,11 @@ class CoreApiProxyController(CoreApiController):
     )
     @log_core_api('api')
     def gateway(self, subpath, **kw):
-        """Handle all /api/<version>/* routes for authenticated applications."""
-        version_code, _, rest = (subpath or '').partition('/')
-        version = request.env['core.api.version'].sudo().get_active_by_code(version_code)
+        """Handle all /api/* routes for authenticated applications."""
+        Version = request.env['core.api.version'].sudo()
+        version, rest = Version.resolve_from_api_subpath(subpath)
         if not version:
-            raise NotFound(f'Unknown or inactive API version: {version_code}')
+            raise NotFound('Unknown or inactive API route.')
 
         if rest == 'auth/token' or rest.startswith('auth/token/'):
             raise NotFound('Use POST on the dedicated auth endpoint for token requests.')

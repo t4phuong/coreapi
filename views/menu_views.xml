@@ -58,6 +58,12 @@
 
               sequence="200"/>
 
+    <menuitem id="menu_core_api_domains"
+              name="API Host Domains"
+              parent="menu_core_api_configuration"
+              action="action_core_api_domain"
+              sequence="5"/>
+
     <menuitem id="menu_core_api_versions"
               name="API Versions"
               parent="menu_core_api_configuration"

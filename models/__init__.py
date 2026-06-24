@@ -1,3 +1,4 @@
+from . import core_api_domain
 from . import core_api_version
 from . import core_api_endpoint
 from . import core_api_application

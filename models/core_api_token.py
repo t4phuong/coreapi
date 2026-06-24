@@ -4,6 +4,7 @@ import binascii
 import datetime
 import logging
 import os
+import uuid
 
 from passlib.context import CryptContext
 
@@ -33,6 +34,18 @@ class CoreApiToken(models.Model):
     )
     application_name = fields.Char(related='application_id.name', store=True)
     client_id = fields.Char(related='application_id.client_id', store=True, index=True)
+    token_type = fields.Selection(
+        [('access', 'Access Token'), ('refresh', 'Refresh Token')],
+        string='Type',
+        required=True,
+        default='access',
+        index=True,
+    )
+    token_pair_id = fields.Char(
+        string='Token Pair',
+        index=True,
+        help='Links access and refresh tokens issued together.',
+    )
     active = fields.Boolean(default=True)
     expiration_date = fields.Datetime(index=True)
     last_used_at = fields.Datetime(readonly=True)
@@ -43,43 +56,96 @@ class CoreApiToken(models.Model):
     _index_unique = models.Constraint('unique(token_index)', 'Token index must be unique.')
 
     @api.model
-    def issue_for_application(self, application):
-        """Return (plaintext_token, token_record). Revokes previous active tokens."""
-        application.ensure_one()
-        if application.state != 'active':
-            raise UserError(_('Cannot issue a token for an inactive application.'))
-        self.sudo().search([
-            ('application_id', '=', application.id),
-            ('active', '=', True),
-        ]).write({'active': False})
+    def _generate_plaintext(self):
+        """Return a new random token string."""
+        return binascii.hexlify(os.urandom(TOKEN_SIZE)).decode()
 
-        ttl = application.token_ttl_hours
-        expiration = (
-            False if not ttl
-            else fields.Datetime.now() + datetime.timedelta(hours=ttl)
-        )
-        plaintext = binascii.hexlify(os.urandom(TOKEN_SIZE)).decode()
+    @api.model
+    def _create_token_record(self, application, token_type, expiration, pair_id, name_suffix):
+        """Create one hashed token record and return (plaintext, record)."""
+        plaintext = self._generate_plaintext()
         token_rec = self.sudo().create({
-            'name': f'Token {fields.Datetime.now()}',
+            'name': f'{name_suffix} {fields.Datetime.now()}',
             'application_id': application.id,
+            'token_type': token_type,
+            'token_pair_id': pair_id,
             'expiration_date': expiration,
             'token_index': plaintext[:INDEX_SIZE],
             'token_hash': TOKEN_CRYPT_CONTEXT.hash(plaintext),
         })
-        ip = request.httprequest.environ.get('REMOTE_ADDR', 'n/a') if request else 'n/a'
-        _logger.info('Core API token issued for application %s from %s', application.client_id, ip)
         return plaintext, token_rec
 
     @api.model
-    def authenticate(self, plaintext_token):
-        """Validate bearer token. Returns (application, token) or (empty, empty)."""
+    def _expiration_from_hours(self, hours):
+        """Return an expiration datetime from TTL hours, or False when non-expiring."""
+        if not hours:
+            return False
+        return fields.Datetime.now() + datetime.timedelta(hours=hours)
+
+    @api.model
+    def _revoke_active_tokens(self, domain):
+        """Deactivate tokens matching the given search domain."""
+        tokens = self.sudo().search(domain + [('active', '=', True)])
+        if tokens:
+            tokens.write({'active': False})
+
+    @api.model
+    def issue_for_application(self, application, revoke_existing=True):
+        """Issue a new access + refresh token pair for the application.
+
+        Returns a dict with plaintext tokens and their records.
+        """
+        application.ensure_one()
+        if application.state != 'active':
+            raise UserError(_('Cannot issue a token for an inactive application.'))
+
+        if revoke_existing:
+            self._revoke_active_tokens([('application_id', '=', application.id)])
+
+        pair_id = str(uuid.uuid4())
+        access_expiration = self._expiration_from_hours(application.token_ttl_hours)
+        refresh_expiration = self._expiration_from_hours(application.refresh_token_ttl_hours)
+
+        refresh_plaintext, refresh_rec = self._create_token_record(
+            application,
+            'refresh',
+            refresh_expiration,
+            pair_id,
+            'Refresh token',
+        )
+        access_plaintext, access_rec = self._create_token_record(
+            application,
+            'access',
+            access_expiration,
+            pair_id,
+            'Access token',
+        )
+
+        ip = request.httprequest.environ.get('REMOTE_ADDR', 'n/a') if request else 'n/a'
+        _logger.info(
+            'Core API token pair issued for application %s from %s',
+            application.client_id,
+            ip,
+        )
+        return {
+            'access_token': access_plaintext,
+            'refresh_token': refresh_plaintext,
+            'access_token_rec': access_rec,
+            'refresh_token_rec': refresh_rec,
+        }
+
+    @api.model
+    def _authenticate_token(self, plaintext_token, token_type):
+        """Validate a token of the given type. Returns (application, token) or empty."""
         empty_application = self.env['core.api.application']
         empty_token = self.browse()
         if not plaintext_token or len(plaintext_token) < INDEX_SIZE:
             return empty_application, empty_token
+
         index = plaintext_token[:INDEX_SIZE]
         tokens = self.sudo().search([
             ('active', '=', True),
+            ('token_type', '=', token_type),
             ('token_index', '=', index),
             ('application_id.state', '=', 'active'),
             '|',
@@ -93,12 +159,38 @@ class CoreApiToken(models.Model):
                 return token.application_id, token
         return empty_application, empty_token
 
+    @api.model
+    def authenticate(self, plaintext_token):
+        """Validate a bearer access token. Returns (application, token) or empty."""
+        return self._authenticate_token(plaintext_token, 'access')
+
+    @api.model
+    def authenticate_refresh(self, plaintext_token):
+        """Validate a refresh token. Returns (application, token) or empty."""
+        return self._authenticate_token(plaintext_token, 'refresh')
+
+    @api.model
+    def refresh_for_application(self, refresh_plaintext):
+        """Rotate an access + refresh pair using a valid refresh token."""
+        application, refresh_token = self.authenticate_refresh(refresh_plaintext)
+        if not application:
+            return None
+
+        self._revoke_active_tokens([('token_pair_id', '=', refresh_token.token_pair_id)])
+        return self.issue_for_application(application, revoke_existing=False)
+
     def action_revoke(self):
         """Deactivate the selected token records."""
         if not self.env.user.has_group('t4_coreapi.group_core_api_manager'):
             raise AccessError(_('Only Core API managers can revoke tokens.'))
         for token in self:
-            token.sudo().write({'active': False})
+            if token.token_pair_id:
+                self.sudo().search([
+                    ('token_pair_id', '=', token.token_pair_id),
+                    ('active', '=', True),
+                ]).write({'active': False})
+            else:
+                token.sudo().write({'active': False})
             _logger.info(
                 'Core API token revoked: application %s #%s',
                 token.client_id,

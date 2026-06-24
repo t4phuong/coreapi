@@ -8,8 +8,9 @@
             <list>
                 <field name="sequence" widget="handle"/>
                 <field name="name"/>
+                <field name="domain_id"/>
                 <field name="code"/>
-                <field name="path_prefix"/>
+                <field name="public_base_url"/>
                 <field name="endpoint_count"/>
                 <field name="active"/>
             </list>
@@ -33,8 +34,10 @@
                     <group>
                         <group>
                             <field name="name"/>
+                            <field name="domain_id"/>
                             <field name="code" placeholder="v1"/>
-                            <field name="path_prefix" readonly="1"/>
+                            <field name="path_prefix" readonly="1" string="API Path"/>
+                            <field name="public_base_url" readonly="1"/>
                             <field name="sequence"/>
                         </group>
                         <group>
@@ -53,6 +56,7 @@
         <field name="arch" type="xml">
             <search>
                 <field name="name"/>
+                <field name="domain_id"/>
                 <field name="code"/>
                 <filter string="Active" name="filter_active" domain="[('active', '=', True)]"/>
                 <filter string="Inactive" name="filter_inactive" domain="[('active', '=', False)]"/>

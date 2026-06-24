@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+
+    <function model="core.api.version" name="write">
+        <value model="core.api.version" search="[]"/>
+        <value eval="{'domain_id': ref('t4_coreapi.core_api_domain_default')}"/>
+    </function>
+
+    <record id="core_api_version_v1" model="core.api.version">
+        <field name="domain_id" ref="core_api_domain_default"/>
+    </record>
+
+    <record id="core_api_version_v2" model="core.api.version">
+        <field name="domain_id" ref="core_api_domain_default"/>
+    </record>
+
+</odoo>

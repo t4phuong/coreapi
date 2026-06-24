@@ -2,7 +2,7 @@
 
     'name': 'T4 Core API',
 
-    'version': '19.0.5.0.1',
+    'version': '19.0.6.0.1',
 
     'summary': 'Secure external API gateway with client credentials and token auth',
 
@@ -28,9 +28,11 @@ OAuth2-style API gateway for external applications and branch controllers.
 
 **Authentication**
 
-* ``POST /api/v1/auth/token`` (or ``/api/v2/auth/token``, etc.) for client credentials grant
+* ``POST https://your-host/api/v1/auth/token`` — host domains group API versions (e.g. ashaf.xyz/api/v1)
 
-* ``auth='core_api'`` gatekeeper on protected routes
+* Refresh tokens: ``grant_type=refresh_token`` returns a new access + refresh pair
+
+* ``auth='core_api'`` gatekeeper on protected routes (access token only)
 
 * ``@validate_core_api('code')`` decorator for fine-grained access control
 
@@ -80,9 +82,12 @@ OAuth2-style API gateway for external applications and branch controllers.
 
         'security/t4_coreapi_rules.xml',
 
+        'data/core_api_domain_data.xml',
         'data/core_api_version_data.xml',
         'data/core_api_version_migrate.xml',
+        'data/core_api_domain_migrate.xml',
 
+        'views/core_api_domain_views.xml',
         'views/core_api_version_views.xml',
         'views/core_api_application_views.xml',
 
@@ -98,6 +103,7 @@ OAuth2-style API gateway for external applications and branch controllers.
 
         'wizard/core_api_application_secret_wizard_views.xml',
 
+        'security/core_api_domain_access.xml',
         'security/core_api_version_access.xml',
 
     ],

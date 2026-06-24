@@ -85,6 +85,7 @@
                             <field name="name"/>
                             <field name="client_id" readonly="1" invisible="not client_id"/>
                             <field name="token_ttl_hours"/>
+                            <field name="refresh_token_ttl_hours"/>
                             <field name="default_version_id"/>
                         </group>
                         <group string="Token Status">
