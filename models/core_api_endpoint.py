@@ -281,17 +281,24 @@ class CoreApiEndpoint(models.Model):
     def dispatch(self, application):
         """Validate access and run this route for the authenticated application."""
         self.ensure_one()
-        if application:
-            if self.application_id != application:
-                raise AccessError(_(
-                    'Gateway route "%(route)s" does not belong to application "%(app)s".',
-                    route=self.name, app=application.name,
-                ))
-            application.check_api_access(self.code, version_id=self.version_id.id)
-        return self._run_server_action(application, request.httprequest)
+        # if application:
+        #     if self.application_id != application:
+        #         raise AccessError(_(
+        #             'Gateway route "%(route)s" does not belong to application "%(app)s".',
+        #             route=self.name, app=application.name,
+        #         ))
+        #     application.check_api_access(self.code, version_id=self.version_id.id)
+        # return self._run_server_action(application, request.httprequest)
         try:
             if application:
-                application.check_api_access(self.code)
+                # application.check_api_access(self.code)
+                if self.application_id != application:
+                    raise AccessError(_(
+                        'Gateway route "%(route)s" does not belong to application "%(app)s".',
+                        route=self.name, app=application.name,
+                    ))
+                application.check_api_access(self.code, version_id=self.version_id.id)
+                
             return self._run_server_action(application, request.httprequest)
         except CoreApiBadRequest as e:
             return self._error_response(str(e), 400)
