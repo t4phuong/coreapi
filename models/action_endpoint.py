@@ -42,10 +42,12 @@ class ActionEndpointManager(models.Model):
             if hasattr(func, '_is_endpoint'):
                 action_name = getattr(func, '_endpoint_name')
 
-                code_body = textwrap.dedent(f"""
-                    res = model.{method_name}()
-                    env['core.api.application'].set_api_response(res)
-                """)
+                # code_body = textwrap.dedent(f"""
+                #     res = model.{method_name}()
+                #     env['core.api.application'].set_api_response(res)
+                # """)
+
+                code_body = f"model.{method_name}()"
 
                 existing_action = ActionServer.search([
                     ('endpoint_manager_id', '=', self.id),
