@@ -10,10 +10,12 @@ _logger = logging.getLogger(__name__)
 
 
 def log_core_api(event_type='api'):
-    """Decorator — audit-log Core API controller calls with duration and status."""
+    """Decorator that audit-logs Core API controller calls with duration and status."""
+
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
+            """Wrap the controller method, log success or failure, then re-raise errors."""
             t0 = time.time()
             route = request.httprequest.path
             method = request.httprequest.method

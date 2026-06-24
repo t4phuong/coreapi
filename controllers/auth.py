@@ -4,7 +4,7 @@ import json
 import logging
 import time
 
-from werkzeug.exceptions import BadRequest, TooManyRequests, Unauthorized
+from werkzeug.exceptions import BadRequest, NotFound, TooManyRequests, Unauthorized
 
 from odoo import http
 from odoo.http import request
@@ -16,16 +16,15 @@ from odoo.addons.t4_coreapi.utils.security import (
 
 _logger = logging.getLogger(__name__)
 
-AUTH_ROUTE = '/api/v1/auth/token'
-
 
 class CoreApiAuthController(http.Controller):
     """OAuth2-style client credentials token endpoint."""
 
-    def _log_auth(self, application, ip, ua, status_code, success, duration_ms=0, error=None):
+    def _log_auth(self, application, route, ip, ua, status_code, success, duration_ms=0, error=None):
+        """Write an authentication attempt to core.api.log."""
         request.env['core.api.log'].sudo().log_event(
             event_type='auth',
-            route=AUTH_ROUTE,
+            route=route,
             method='POST',
             ip_address=ip,
             status_code=status_code,
@@ -37,14 +36,20 @@ class CoreApiAuthController(http.Controller):
         )
 
     @http.route(
-        AUTH_ROUTE,
+        '/api/<string:version_code>/auth/token',
         type='http',
         auth='none',
         methods=['POST'],
         csrf=False,
         save_session=False,
     )
-    def issue_token(self, **kw):
+    def issue_token(self, version_code, **kw):
+        """Exchange client_id and client_secret for a bearer access token."""
+        version = request.env['core.api.version'].sudo().get_active_by_code(version_code)
+        if not version:
+            raise NotFound(f'Unknown or inactive API version: {version_code}')
+
+        auth_route = f'{version.path_prefix.rstrip("/")}/auth/token'
         t0 = time.time()
         ip = get_client_ip()
         ua = request.httprequest.headers.get('User-Agent')
@@ -54,7 +59,7 @@ class CoreApiAuthController(http.Controller):
             check_ip_auth_rate_limit(request.env, ip)
         except Exception as e:
             duration = (time.time() - t0) * 1000
-            self._log_auth(application, ip, ua, 429, False, duration, str(e))
+            self._log_auth(application, auth_route, ip, ua, 429, False, duration, str(e))
             raise TooManyRequests(str(e)) from e
 
         try:
@@ -82,7 +87,7 @@ class CoreApiAuthController(http.Controller):
                 candidate.check_auth_rate_limit()
             except Exception as e:
                 duration = (time.time() - t0) * 1000
-                self._log_auth(candidate, ip, ua, 429 if 'rate limit' in str(e).lower() else 403, False, duration, str(e))
+                self._log_auth(candidate, auth_route, ip, ua, 429 if 'rate limit' in str(e).lower() else 403, False, duration, str(e))
                 if 'rate limit' in str(e).lower():
                     raise TooManyRequests(str(e)) from e
                 raise
@@ -92,7 +97,7 @@ class CoreApiAuthController(http.Controller):
         )
         if not application:
             duration = (time.time() - t0) * 1000
-            self._log_auth(candidate, ip, ua, 401, False, duration, 'Invalid client credentials')
+            self._log_auth(candidate, auth_route, ip, ua, 401, False, duration, 'Invalid client credentials')
             _logger.warning('Core API auth failed for client_id=%s from %s', client_id, ip)
             raise Unauthorized('Invalid client credentials')
 
@@ -108,7 +113,7 @@ class CoreApiAuthController(http.Controller):
             body['expires_at'] = token_rec.expiration_date.isoformat()
 
         duration = (time.time() - t0) * 1000
-        self._log_auth(application, ip, ua, 200, True, duration)
+        self._log_auth(application, auth_route, ip, ua, 200, True, duration)
 
         return request.make_response(
             json.dumps(body),

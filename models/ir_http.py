@@ -15,6 +15,7 @@ class IrHttp(models.AbstractModel):
 
     @classmethod
     def _extract_bearer_token(cls):
+        """Read the bearer token value from the Authorization header."""
         header = request.httprequest.headers.get('Authorization')
         if header and (m := re.match(r'^bearer\s+(.+)$', header, re.IGNORECASE)):
             return m.group(1).strip()
@@ -22,7 +23,7 @@ class IrHttp(models.AbstractModel):
 
     @classmethod
     def _auth_method_core_api(cls):
-        """Gatekeeper: validate application bearer token before controller runs."""
+        """Validate bearer token, IP, and rate limits before API controllers run."""
         token = cls._extract_bearer_token()
         if not token:
             raise Unauthorized(
@@ -56,5 +57,5 @@ class IrHttp(models.AbstractModel):
 
     @classmethod
     def _auth_method_validate_core_api(cls):
-        """Alias auth method — same gatekeeper as core_api."""
+        """Alias auth method. Same gatekeeper as core_api."""
         cls._auth_method_core_api()

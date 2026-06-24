@@ -38,6 +38,7 @@ class CoreApiLog(models.Model):
         error_message=None,
         user_agent=None,
     ):
+        """Create one audit log row for an auth or API request."""
         return self.sudo().create({
             'application_id': application.id if application else False,
             'client_id': application.client_id if application else False,
@@ -54,6 +55,7 @@ class CoreApiLog(models.Model):
 
     @api.model
     def count_recent(self, domain_extra, minutes=1):
+        """Count log rows in the last N minutes for rate limiting."""
         domain = [
             ('create_date', '>=', fields.Datetime.subtract(fields.Datetime.now(), minutes=minutes)),
         ] + domain_extra

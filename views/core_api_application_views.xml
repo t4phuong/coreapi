@@ -24,9 +24,9 @@
                 <field name="state" widget="badge"
                        decoration-success="state == 'active'"
                        decoration-muted="state == 'inactive'"/>
+                <field name="token_count"/>
                 <field name="token_expiration"/>
                 <field name="last_auth_at"/>
-                <field name="token_count"/>
             </list>
         </field>
     </record>
@@ -85,6 +85,7 @@
                             <field name="name"/>
                             <field name="client_id" readonly="1" invisible="not client_id"/>
                             <field name="token_ttl_hours"/>
+                            <field name="default_version_id"/>
                         </group>
                         <group string="Token Status">
                             <field name="active_token_id" readonly="1"/>
@@ -95,23 +96,121 @@
                             <field name="active" invisible="1"/>
                         </group>
                     </group>
-                    <group string="Allowed APIs">
-                        <field name="endpoint_ids"
-                               widget="many2many_tags"
-                               nolabel="1"
-                               can_create="0"
-                               options="{'no_create': True, 'no_quick_create': True, 'no_create_edit': True, 'no_open': True}"/>
+
+                    <notebook>
+                        <page string="Gateway Routes" name="gateway_routes">
+                            <field name="default_version_id" invisible="1"/>
+                            <field name="endpoint_ids" nolabel="1"
+                                   context="{
+                                       'default_application_id': id,
+                                       'default_version_id': default_version_id,
+                                   }">
+                                <list editable="bottom" default_group_by="version_id">
+                                    <field name="application_id" column_invisible="1"/>
+                                    <field name="version_id"/>
+                                    <field name="name"/>
+                                    <field name="code"/>
+                                    <field name="route_suffix"/>
+                                    <field name="route_pattern" readonly="1"/>
+                                    <field name="http_methods"/>
+                                    <field name="action_id"
+                                           can_create="0"
+                                           options="{'no_create': True, 'no_quick_create': True, 'no_create_edit': True}"
+                                           context="{
+                                               'list_view_ref': 't4_coreapi.view_ir_actions_server_core_api_picker_list',
+                                           }"/>
+                                    <field name="active"/>
+                                </list>
+                                <form string="Gateway Route">
+                                    <field name="application_id" required="1" invisible="1"/>
+                                    <group>
+                                        <group string="Gateway (public)">
+                                            <field name="version_id"/>
+                                            <field name="name"/>
+                                            <field name="code"/>
+                                            <field name="route_suffix" placeholder="orders"/>
+                                            <field name="route_pattern" readonly="1"/>
+                                            <field name="http_methods" placeholder="GET,POST"/>
+                                            <field name="active"/>
+                                        </group>
+                                        <group string="Handler">
+                                            <field name="action_id"
+                                                   can_create="0"
+                                                   options="{'no_create': True, 'no_quick_create': True, 'no_create_edit': True, 'no_open': True}"
+                                                   context="{
+                                                       'create': False,
+                                                       'edit': False,
+                                                       'delete': False,
+                                                       'list_view_ref': 't4_coreapi.view_ir_actions_server_core_api_picker_list',
+                                                   }"/>
+                                        </group>
+                                    </group>
+                                    <field name="description" placeholder="What this route is for…"/>
+                                </form>
+                            </field>
+                        </page>
+
+                        <page string="Authentication Guide" name="auth_guide" invisible="not client_id">
+                            <div class="alert alert-info mb-3" role="alert">
+                                <strong>How to authenticate</strong>
+                                <ol class="mb-0 mt-2">
+                                    <li>Use your Odoo <strong>database name</strong> (shown below) via <code>?db=...</code> or the <code>X-Odoo-Database</code> header. This is not the module name.</li>
+                                    <li>Request an access token with your <strong>Client ID</strong> and <strong>Client Secret</strong>.</li>
+                                    <li>Call any allowed Gateway Route with <code>Authorization: Bearer &lt;access_token&gt;</code>.</li>
+                                    <li>Reuse the token until it expires or is revoked.</li>
+                                </ol>
+                            </div>
+                            <group>
+                                <group string="Step 1: Get access token">
+                                    <field name="api_database_name" readonly="1" widget="CopyClipboardChar"/>
+                                    <field name="api_base_url" readonly="1"/>
+                                    <field name="auth_endpoint_url" readonly="1" widget="CopyClipboardChar"/>
+                                    <label for="auth_curl_example" string="Example request"/>
+                                    <div class="o_row">
+                                        <field name="auth_curl_example" readonly="1" nolabel="1" colspan="2"
+                                               class="font-monospace text-muted"/>
+                                    </div>
+                                </group>
+                                <group string="Step 2: Call a Gateway Route">
+                                    <div colspan="2" class="text-muted">
+                                        Replace <code>&lt;access_token&gt;</code> with the token from step 1.
+                                        The sample URL uses your first configured route (or a placeholder).
+                                    </div>
+                                    <label for="api_call_curl_example" string="Example request"/>
+                                    <div class="o_row">
+                                        <field name="api_call_curl_example" readonly="1" nolabel="1" colspan="2"
+                                               class="font-monospace text-muted"/>
+                                    </div>
+                                </group>
+                            </group>
+                            <group string="Token response (success)">
+                                <div colspan="2" class="font-monospace text-muted">
+                                    {<br/>
+                                    &#160;&#160;"access_token": "…",<br/>
+                                    &#160;&#160;"token_type": "Bearer",<br/>
+                                    &#160;&#160;"expires_in": 86400,<br/>
+                                    &#160;&#160;"expires_at": "2026-06-20T12:00:00"<br/>
+                                    }
+                                </div>
+                            </group>
+                        </page>
+
+                        <page string="Security" name="security">
+                            <group>
+                                <group>
+                                    <field name="rate_limit_per_minute"/>
+                                    <field name="auth_rate_limit_per_minute"/>
+                                </group>
+                                <group>
+                                    <field name="allowed_ips" placeholder="203.0.113.10&#10;198.51.100.0/24"/>
+                                </group>
+                            </group>
+                        </page>
+                    </notebook>
+
+                    <group>
+                        <field name="notes" placeholder="Internal notes…" nolabel="1" colspan="2"/>
                     </group>
-                    <group string="Security (DDoS / Access)">
-                        <group>
-                            <field name="rate_limit_per_minute"/>
-                            <field name="auth_rate_limit_per_minute"/>
-                        </group>
-                        <group>
-                            <field name="allowed_ips" placeholder="203.0.113.10&#10;198.51.100.0/24"/>
-                        </group>
-                    </group>
-                    <field name="notes" placeholder="Internal notes…"/>
                 </sheet>
                 <chatter/>
             </form>

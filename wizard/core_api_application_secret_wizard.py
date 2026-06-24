@@ -12,6 +12,7 @@ class CoreApiApplicationSecretWizard(models.TransientModel):
     client_secret = fields.Char(readonly=True)
 
     def action_confirm(self):
+        """Mark credentials as viewed and close the popup."""
         self.ensure_one()
         self.application_id.sudo().write({'credentials_pending': False})
         self.application_id._clear_pending_secret()
