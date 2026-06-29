@@ -110,15 +110,16 @@ def get_body(obj=None):
     return ensure_dict(parsed_data)
 
 
-def set_response(data=False, message="Thao tác thành công", status_code=200):
+def set_response(data=False, message='Request processed successfully.', status_code=200):
     """Build a standard JSON API response via set_api_response."""
-    data_field = {"data": data} if data else {}
+    from odoo.addons.t4_coreapi.utils.response import STATUS_ERROR, STATUS_SUCCESS
 
     response_payload = {
-        "status_code": status_code,
-        "status": "success" if 200 <= status_code < 300 else "error",
-        "message": message,
-        **data_field,
+        'status_code': status_code,
+        'status': STATUS_SUCCESS if 200 <= status_code < 300 else STATUS_ERROR,
+        'message': message,
     }
+    if data is not False and data is not None:
+        response_payload['data'] = data
 
-    request.env["core.api.application"].set_api_response(response_payload)
+    request.env['core.api.application'].set_api_response(response_payload)
