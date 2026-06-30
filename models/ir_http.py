@@ -2,16 +2,23 @@
 
 import re
 
-from werkzeug.exceptions import TooManyRequests, Unauthorized
+from werkzeug.exceptions import HTTPException, TooManyRequests, Unauthorized
 
 from odoo import models
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.http import request
 
+from odoo.addons.t4_coreapi.utils.response import api_error_response
 from odoo.addons.t4_coreapi.utils.security import get_client_ip
 
 
 class IrHttp(models.AbstractModel):
     _inherit = 'ir.http'
+
+    @classmethod
+    def _is_core_api_request(cls):
+        """Return True when the current request targets a Core API HTTP route."""
+        return (request.httprequest.path or '').startswith('/api/')
 
     @classmethod
     def _extract_bearer_token(cls):
@@ -27,14 +34,14 @@ class IrHttp(models.AbstractModel):
         token = cls._extract_bearer_token()
         if not token:
             raise Unauthorized(
-                'Missing Authorization: Bearer <token>',
+                'Missing Authorization: Bearer <token>.',
                 www_authenticate='Bearer realm="Core API"',
             )
 
         application, token_rec = request.env['core.api.token'].sudo().authenticate(token)
         if not application:
             raise Unauthorized(
-                'Invalid or expired access token',
+                'Invalid or expired access token.',
                 www_authenticate='Bearer realm="Core API"',
             )
 
@@ -59,3 +66,26 @@ class IrHttp(models.AbstractModel):
     def _auth_method_validate_core_api(cls):
         """Alias auth method. Same gatekeeper as core_api."""
         cls._auth_method_core_api()
+
+    @classmethod
+    def _handle_error(cls, exception):
+        """Return JSON error bodies for all /api/* routes."""
+        if cls._is_core_api_request():
+            return cls._handle_core_api_error(exception)
+        return super()._handle_error(exception)
+
+    @classmethod
+    def _handle_core_api_error(cls, exception):
+        """Map exceptions to standard Core API JSON error responses."""
+        if isinstance(exception, HTTPException):
+            message = exception.description or str(exception)
+            status_code = exception.code or 500
+            return api_error_response(message, status_code=status_code)
+
+        if isinstance(exception, AccessError):
+            return api_error_response(exception.args[0], status_code=403)
+
+        if isinstance(exception, (UserError, ValidationError)):
+            return api_error_response(exception.args[0], status_code=400)
+
+        return api_error_response('Internal server error.', status_code=500)

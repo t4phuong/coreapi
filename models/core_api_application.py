@@ -74,17 +74,35 @@ class CoreApiApplication(models.Model):
         copy=False,
         readonly=True,
     )
-    endpoint_ids = fields.One2many(
-        'core.api.endpoint',
-        'application_id',
-        string='Gateway Routes',
-        help='API routes owned by this application. Each application manages its own routes.',
+    domain_id = fields.Many2one(
+        'core.api.domain',
+        string='Host Domain',
+        required=True,
+        default=lambda self: self.env['core.api.domain'].get_default().id,
+        tracking=True,
+        help='Public hostname group for this application. API versions and routes belong to this host.',
     )
     default_version_id = fields.Many2one(
         'core.api.version',
         string='Default API Version',
-        default=lambda self: self.env['core.api.version'].get_default_version().id,
-        help='Used in the Authentication Guide and as the default when adding new routes.',
+        domain="[('domain_id', '=', domain_id), ('active', '=', True)]",
+        help='The only API version this application may call. '
+             'Routes on other versions can be prepared in the form but are blocked at runtime.',
+    )
+    domain_version_count = fields.Integer(
+        compute='_compute_domain_version_count',
+        string='Active API Versions on Domain',
+    )
+    endpoint_ids = fields.One2many(
+        'core.api.endpoint',
+        'application_id',
+        string='Gateway Routes',
+        help='All API routes owned by this application.',
+    )
+    version_tab_ids = fields.One2many(
+        'core.api.application.version.tab',
+        'application_id',
+        string='Version Route Tabs',
     )
     rate_limit_per_minute = fields.Integer(
         string='API Rate Limit (/min)',
@@ -129,6 +147,94 @@ class CoreApiApplication(models.Model):
 
     _client_id_unique = models.Constraint('unique(client_id)', 'Client ID must be unique.')
 
+    @api.depends('domain_id', 'domain_id.version_ids', 'domain_id.version_ids.active')
+    def _compute_domain_version_count(self):
+        """Count active API versions on the application's host domain."""
+        for rec in self:
+            rec.domain_version_count = len(rec.domain_id.version_ids.filtered('active'))
+
+    def _ensure_version_tabs(self):
+        """Create one route tab per active API version on the application's domain."""
+        Tab = self.env['core.api.application.version.tab']
+        for app in self:
+            if not app.id or not app.domain_id:
+                continue
+            versions = app.domain_id.version_ids.filtered('active')
+            existing = {tab.version_id.id: tab for tab in app.version_tab_ids}
+            for version in versions:
+                if version.id not in existing:
+                    Tab.create({
+                        'application_id': app.id,
+                        'version_id': version.id,
+                    })
+            stale_tabs = app.version_tab_ids.filtered(lambda t: t.version_id not in versions)
+            if stale_tabs:
+                stale_tabs.unlink()
+
+    @api.model
+    def _ensure_version_tabs_all(self):
+        """Create route tabs for every saved application (upgrade hook)."""
+        self.search([])._ensure_version_tabs()
+
+    @api.onchange('domain_id')
+    def _onchange_domain_id(self):
+        """Clear routes and reset default version when the host domain changes."""
+        self.endpoint_ids = [(5, 0, 0)]
+        self.version_tab_ids = [(5, 0, 0)]
+        versions = self.domain_id.version_ids.filtered('active').sorted('sequence')
+        self.default_version_id = versions[:1]
+        result = {
+            'domain': {
+                'default_version_id': [('domain_id', '=', self.domain_id.id), ('active', '=', True)],
+            },
+        }
+        if self.domain_id and not versions:
+            result['warning'] = {
+                'title': _('No API versions'),
+                'message': _(
+                    'Host domain "%(domain)s" has no API versions. '
+                    'Create them on the domain first.',
+                    domain=self.domain_id.display_name,
+                ),
+            }
+        return result
+
+    def write(self, vals):
+        """Remove all routes when the host domain changes on a saved application."""
+        if 'domain_id' in vals:
+            for rec in self:
+                if rec.domain_id.id != vals['domain_id']:
+                    rec.endpoint_ids.unlink()
+                    rec.version_tab_ids.unlink()
+            if len(self) == 1 and 'default_version_id' not in vals:
+                version = self.env['core.api.version'].search([
+                    ('domain_id', '=', vals['domain_id']),
+                    ('active', '=', True),
+                ], order='sequence', limit=1)
+                if version:
+                    vals['default_version_id'] = version.id
+        result = super().write(vals)
+        if 'domain_id' in vals:
+            self._ensure_version_tabs()
+        return result
+
+    @api.model
+    def default_get(self, fields_list):
+        """Pre-fill default API version from the default host domain."""
+        defaults = super().default_get(fields_list)
+        domain = self.env['core.api.domain'].browse(defaults.get('domain_id'))
+        if not domain:
+            domain = self.env['core.api.domain'].get_default()
+            if domain and 'domain_id' in fields_list:
+                defaults['domain_id'] = domain.id
+        if 'default_version_id' in fields_list and not defaults.get('default_version_id') and domain:
+            version = domain.version_ids.filtered('active').sorted('sequence')[:1]
+            if not version:
+                version = self.env['core.api.version'].get_default_version()
+            if version and version.domain_id == domain:
+                defaults['default_version_id'] = version.id
+        return defaults
+
     @api.depends('state')
     def _compute_active(self):
         """Mirror application state into the active boolean field."""
@@ -149,6 +255,8 @@ class CoreApiApplication(models.Model):
 
     @api.depends(
         'client_id',
+        'domain_id',
+        'domain_id.base_url',
         'default_version_id',
         'default_version_id.code',
         'default_version_id.path_prefix',
@@ -160,7 +268,11 @@ class CoreApiApplication(models.Model):
     def _compute_api_integration_guide(self):
         """Build auth URLs and cURL samples shown on the application form."""
         for rec in self:
-            version = rec.default_version_id or self.env['core.api.version'].get_default_version()
+            version = rec.default_version_id
+            if not version or version.domain_id != rec.domain_id:
+                version = rec.domain_id.version_ids.filtered('active').sorted('sequence')[:1]
+            if not version:
+                version = self.env['core.api.version'].get_default_version()
             version_public = (version.public_base_url if version else '').rstrip('/')
             if not version_public:
                 version_public = (
@@ -182,7 +294,7 @@ class CoreApiApplication(models.Model):
                 f'  -d \'{{"grant_type": "client_credentials", '
                 f'"client_id": "{client_id}", '
                 f'"client_secret": "<client_secret>"}}\'\n\n'
-                f'# Response: access_token, refresh_token, expires_in, refresh_expires_in\n\n'
+                f'# Response: status, message, api_token, refresh_token\n\n'
                 f'# 2) When access_token expires — refresh without client_secret\n'
                 f'curl -X POST "{auth_url}?db={db_name}" \\\n'
                 f'  -H "Content-Type: application/json" \\\n'
@@ -234,12 +346,14 @@ class CoreApiApplication(models.Model):
                 plaintext_secret = None
             prepared.append((vals, plaintext_secret))
         records = super().create([v for v, _ in prepared])
+        records._ensure_version_tabs()
         for record, (_, plaintext_secret) in zip(records, prepared):
             if not record.client_id:
                 record.sudo().write({'client_id': self._generate_client_id()})
             if plaintext_secret:
                 record._store_pending_secret(plaintext_secret)
                 record.sudo().write({'credentials_pending': True})
+                record._notify_application_form_reload()
         return records
 
     @api.model
@@ -270,6 +384,15 @@ class CoreApiApplication(models.Model):
             pending = dict(request.session.get('core_api_application_secrets', {}))
             pending.pop(str(self.id), None)
             request.session['core_api_application_secrets'] = pending
+
+    def _notify_application_form_reload(self):
+        """Ask open application forms to reload after credential state changes."""
+        self.ensure_one()
+        self.env['bus.bus']._sendone(
+            'broadcast',
+            'core_api_application_reload',
+            {'application_id': self.id},
+        )
 
     def _open_secret_wizard(self, plaintext_secret):
         """Open the one-time credentials popup for the current application."""
@@ -307,7 +430,12 @@ class CoreApiApplication(models.Model):
         if self.state != 'active':
             raise UserError(_('Cannot regenerate secret for an inactive application.'))
         plaintext = secrets.token_urlsafe(32)
-        self.sudo().write({'client_secret': SECRET_CRYPT_CONTEXT.hash(plaintext)})
+        self.sudo().write({
+            'client_secret': SECRET_CRYPT_CONTEXT.hash(plaintext),
+            'credentials_pending': True,
+        })
+        self._store_pending_secret(plaintext)
+        self._notify_application_form_reload()
         return self._open_secret_wizard(plaintext)
 
     def action_set_active(self):
@@ -402,25 +530,49 @@ class CoreApiApplication(models.Model):
     @api.model
     def authenticate_client(self, client_id, client_secret, ip_address=None):
         """Validate client credentials. Returns application or empty recordset."""
-        if not client_id or not client_secret:
-            return self.browse()
-        application = self.sudo().search([
-            ('client_id', '=', client_id),
-            ('state', '=', 'active'),
-        ], limit=1)
-        if not application or not SECRET_CRYPT_CONTEXT.verify(client_secret, application.client_secret):
-            return self.browse()
+        application, _error = self.authenticate_client_with_reason(
+            client_id, client_secret, ip_address=ip_address,
+        )
+        return application
+
+    @api.model
+    def authenticate_client_with_reason(self, client_id, client_secret, ip_address=None):
+        """Validate client credentials. Returns (application, error_message)."""
+        if not (client_id or '').strip():
+            return self.browse(), _('client_id is required.')
+        if not client_secret:
+            return self.browse(), _('client_secret is required.')
+
+        client_id = client_id.strip()
+        application = self.sudo().search([('client_id', '=', client_id)], limit=1)
+        if not application:
+            return self.browse(), _('No application found for the given client_id.')
+
+        if application.state != 'active':
+            return self.browse(), _('Application "%s" is inactive.') % application.name
+
+        if not application.client_secret or not SECRET_CRYPT_CONTEXT.verify(
+            client_secret, application.client_secret
+        ):
+            return self.browse(), _('Invalid client_secret for the given client_id.')
+
         application.write({
             'last_auth_at': fields.Datetime.now(),
             'last_auth_ip': ip_address or False,
         })
-        return application
+        return application, None
 
     def check_api_access(self, endpoint_code, version_id=None):
         """Raise AccessError when the application cannot call the endpoint code."""
         self.ensure_one()
         if self.state != 'active':
             raise AccessError(_('Application "%s" is inactive.', self.name))
+        if version_id and self.default_version_id and version_id != self.default_version_id.id:
+            raise AccessError(_(
+                'Application "%(app)s" is restricted to API version %(version)s.',
+                app=self.name,
+                version=self.default_version_id.display_name,
+            ))
         endpoints = self.endpoint_ids.filtered(lambda e: e.code == endpoint_code)
         if version_id:
             endpoints = endpoints.filtered(lambda e: e.version_id.id == version_id)

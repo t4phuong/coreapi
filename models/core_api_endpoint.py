@@ -12,7 +12,12 @@ from odoo.http import request
 
 from odoo.addons.t4_coreapi.utils.exception import (
     CoreApiBadRequest,
-    CoreApiInvalidResponse,
+    CoreApiInvalidBody,
+)
+from odoo.addons.t4_coreapi.utils.response import (
+    api_error_response,
+    make_json_response,
+    normalize_gateway_response,
 )
 
 _logger = logging.getLogger(__name__)
@@ -37,7 +42,6 @@ class CoreApiEndpoint(models.Model):
         required=True,
         ondelete='restrict',
         index=True,
-        default=lambda self: self.env['core.api.version'].get_default_version().id,
     )
     route_suffix = fields.Char(
         string='Route Path',
@@ -69,6 +73,12 @@ class CoreApiEndpoint(models.Model):
         ondelete='cascade',
         index=True,
     )
+    version_tab_id = fields.Many2one(
+        'core.api.application.version.tab',
+        string='Version Route Tab',
+        ondelete='cascade',
+        index=True,
+    )
 
     _code_unique_per_application_version = models.Constraint(
         'unique(application_id, version_id, code)',
@@ -87,6 +97,35 @@ class CoreApiEndpoint(models.Model):
             suffix = (endpoint.route_suffix or '').strip().strip('/')
             endpoint.route_pattern = f'{prefix}/{suffix}' if suffix else prefix
 
+    @api.constrains('version_tab_id', 'application_id', 'version_id')
+    def _check_version_tab(self):
+        """Keep the version tab aligned with the route application and version."""
+        for endpoint in self:
+            tab = endpoint.version_tab_id
+            if not tab:
+                continue
+            if tab.application_id != endpoint.application_id:
+                raise ValidationError(_(
+                    'Route tab application does not match the route application.'
+                ))
+            if tab.version_id != endpoint.version_id:
+                raise ValidationError(_(
+                    'Route tab API version does not match the route API version.'
+                ))
+
+    @api.constrains('application_id', 'version_id')
+    def _check_version_domain(self):
+        """Ensure the route version belongs to the application's host domain."""
+        for endpoint in self:
+            if not endpoint.application_id or not endpoint.version_id:
+                continue
+            if endpoint.version_id.domain_id != endpoint.application_id.domain_id:
+                raise ValidationError(_(
+                    'API version "%(version)s" does not belong to host domain "%(domain)s".',
+                    version=endpoint.version_id.display_name,
+                    domain=endpoint.application_id.domain_id.display_name,
+                ))
+
     @api.constrains('application_id')
     def _check_application_id(self):
         """Block saving a route that is not linked to an application."""
@@ -103,19 +142,109 @@ class CoreApiEndpoint(models.Model):
             if not (endpoint.route_suffix or '').strip().strip('/'):
                 raise ValidationError(_('Route path is required.'))
 
+    @api.model
+    def _version_id_from_context(self, application_id=None):
+        """Resolve API version from x2many context (tab-specific defaults)."""
+        Version = self.env['core.api.version']
+        default_version_id = self.env.context.get('default_version_id')
+        if default_version_id:
+            version = Version.browse(default_version_id).exists()
+            if version:
+                return version.id
+
+        version_code = self.env.context.get('default_version_code')
+        if not version_code:
+            return False
+
+        domain = [('code', '=', version_code), ('active', '=', True)]
+        default_domain_id = self.env.context.get('default_domain_id')
+        if default_domain_id:
+            domain.append(('domain_id', '=', default_domain_id))
+        elif application_id:
+            app = self.env['core.api.application'].browse(application_id)
+            if app.domain_id:
+                domain.append(('domain_id', '=', app.domain_id.id))
+        version = Version.search(domain, limit=1)
+        return version.id if version else False
+
+    @api.model
+    def _assign_version_tab(self, vals):
+        """Link a route to the correct per-version tab on its application."""
+        tab_id = vals.get('version_tab_id') or self.env.context.get('default_version_tab_id')
+        application_id = vals.get('application_id') or self.env.context.get('default_application_id')
+        version_id = vals.get('version_id') or self._version_id_from_context(
+            application_id=application_id,
+        )
+        if not tab_id and application_id and version_id:
+            tab = self.env['core.api.application.version.tab'].get_or_create(
+                application_id, version_id,
+            )
+            tab_id = tab.id
+        if tab_id:
+            tab = self.env['core.api.application.version.tab'].browse(tab_id).exists()
+            if tab:
+                vals['version_tab_id'] = tab.id
+                vals.setdefault('application_id', tab.application_id.id)
+                vals.setdefault('version_id', tab.version_id.id)
+        return vals
+
+    @api.model
+    def default_get(self, fields_list):
+        """Apply tab context so new inline rows get the correct API version."""
+        defaults = super().default_get(fields_list)
+        if 'version_id' not in fields_list:
+            return defaults
+        application_id = (
+            defaults.get('application_id')
+            or self.env.context.get('default_application_id')
+        )
+        version_id = self._version_id_from_context(application_id=application_id)
+        if version_id:
+            defaults['version_id'] = version_id
+        elif not defaults.get('version_id'):
+            default_version = self.env['core.api.version'].get_default_version()
+            if default_version:
+                defaults['version_id'] = default_version.id
+        return defaults
+
     @api.model_create_multi
     def create(self, vals_list):
-        """Fill application_id from form context when creating from an application."""
+        """Fill application_id, version_id, and version tab from form context."""
+        prepared = []
         for vals in vals_list:
+            vals = dict(vals)
             if not vals.get('application_id'):
                 default_app = self.env.context.get('default_application_id')
                 if default_app:
                     vals['application_id'] = default_app
+            vals = self._assign_version_tab(vals)
             if not vals.get('version_id'):
-                default_version = self.env.context.get('default_version_id')
-                if default_version:
-                    vals['version_id'] = default_version
-        return super().create(vals_list)
+                version_id = self._version_id_from_context(
+                    application_id=vals.get('application_id'),
+                )
+                if version_id:
+                    vals['version_id'] = version_id
+                    vals = self._assign_version_tab(vals)
+                elif not vals.get('version_id'):
+                    default_version = self.env['core.api.version'].get_default_version()
+                    if default_version:
+                        vals['version_id'] = default_version.id
+                        vals = self._assign_version_tab(vals)
+            prepared.append(vals)
+        return super().create(prepared)
+
+    @api.model
+    def _migrate_link_version_tabs(self):
+        """Attach existing routes to per-version application tabs."""
+        Application = self.env['core.api.application'].sudo()
+        for app in Application.search([]):
+            app._ensure_version_tabs()
+            for endpoint in app.endpoint_ids:
+                tab = app.version_tab_ids.filtered(
+                    lambda t: t.version_id == endpoint.version_id
+                )[:1]
+                if tab and endpoint.version_tab_id != tab:
+                    endpoint.version_tab_id = tab.id
 
     @api.model
     def _normalize_route_suffix(self, suffix):
@@ -203,7 +332,7 @@ class CoreApiEndpoint(models.Model):
             try:
                 return json.loads(raw)
             except json.JSONDecodeError as e:
-                raise BadRequest('Invalid JSON body.') from e
+                raise CoreApiInvalidBody('Invalid JSON body.') from e
         return raw
 
     def _server_action_context(self, application, httprequest):
@@ -248,62 +377,28 @@ class CoreApiEndpoint(models.Model):
         self.action_id.sudo().with_context(**ctx).run()
 
         response_data = getattr(request, 'core_api_response', None)
-        if response_data is None:
-            response_data = {
-                'status': 'ok',
-                'message': "Successful!",
-            }
-        elif not isinstance(response_data, dict):
-            raise CoreApiInvalidResponse(
-                _('API response must be a dict. Use set_api_response({...}).')
-            )
-
-        status = 200
-        if isinstance(response_data, dict):
-            payload = dict(response_data)
-            if payload.get('status_code'):
-                status = int(payload.pop('status_code'))
-            response_data = payload
-
-        return request.make_response(
-            json.dumps(response_data, default=str),
-            headers=[('Content-Type', 'application/json')],
-            status=status,
-        )
+        status_code, payload = normalize_gateway_response(response_data)
+        return make_json_response(payload, status_code)
 
     def _error_response(self, message, status=400):
-        return request.make_response(
-            json.dumps({'status': 'error', 'message': message}),
-            headers=[('Content-Type', 'application/json')],
-            status=status,
-        )
+        return api_error_response(message, status_code=status)
 
     def dispatch(self, application):
         """Validate access and run this route for the authenticated application."""
         self.ensure_one()
-        # if application:
-        #     if self.application_id != application:
-        #         raise AccessError(_(
-        #             'Gateway route "%(route)s" does not belong to application "%(app)s".',
-        #             route=self.name, app=application.name,
-        #         ))
-        #     application.check_api_access(self.code, version_id=self.version_id.id)
-        # return self._run_server_action(application, request.httprequest)
         try:
             if application:
-                # application.check_api_access(self.code)
                 if self.application_id != application:
                     raise AccessError(_(
                         'Gateway route "%(route)s" does not belong to application "%(app)s".',
                         route=self.name, app=application.name,
                     ))
                 application.check_api_access(self.code, version_id=self.version_id.id)
-                
             return self._run_server_action(application, request.httprequest)
         except CoreApiBadRequest as e:
             return self._error_response(str(e), 400)
         except BadRequest as e:
-            return self._error_response(str(e), 400)
+            return self._error_response(e.description or str(e), 400)
         except ValidationError as e:
             return self._error_response(str(e), 400)
 
@@ -315,5 +410,5 @@ class CoreApiEndpoint(models.Model):
             path, request.httprequest.method, application=application,
         )
         if not endpoint:
-            raise NotFound(f'No gateway route configured for: {path}')
+            raise NotFound(f'No gateway route configured for: {path}.')
         return endpoint.dispatch(application)

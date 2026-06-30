@@ -1,5 +1,6 @@
 from . import core_api_domain
 from . import core_api_version
+from . import core_api_application_version_tab
 from . import core_api_endpoint
 from . import core_api_application
 from . import core_api_token

@@ -1,5 +1,6 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_core_api_application_manager,core.api.application manager,model_core_api_application,t4_coreapi.group_core_api_manager,1,1,1,1
+access_core_api_application_version_tab_manager,core.api.application.version.tab manager,model_core_api_application_version_tab,t4_coreapi.group_core_api_manager,1,1,1,1
 access_core_api_endpoint_manager,core.api.endpoint manager,model_core_api_endpoint,t4_coreapi.group_core_api_manager,1,1,1,1
 access_core_api_token_manager,core.api.token manager,model_core_api_token,t4_coreapi.group_core_api_manager,1,1,1,1
 access_core_api_application_secret_wizard_manager,core.api.application.secret.wizard manager,model_core_api_application_secret_wizard,t4_coreapi.group_core_api_manager,1,1,1,1
