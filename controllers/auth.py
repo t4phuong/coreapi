@@ -9,6 +9,7 @@ from werkzeug.exceptions import BadRequest, NotFound, TooManyRequests, Unauthori
 from odoo import http
 from odoo.http import request
 
+from odoo.addons.t4_coreapi.utils.response import auth_success_response
 from odoo.addons.t4_coreapi.utils.security import (
     check_ip_auth_rate_limit,
     get_client_ip,
@@ -43,26 +44,7 @@ class CoreApiAuthController(http.Controller):
                 return json.loads(raw) if raw else {}
             return dict(request.httprequest.form) or (json.loads(raw) if raw else {})
         except json.JSONDecodeError:
-            raise BadRequest('Invalid JSON body') from None
-
-    def _token_response(self, token_result, application):
-        """Build the JSON body for a successful token issuance or refresh."""
-        access_rec = token_result['access_token_rec']
-        refresh_rec = token_result['refresh_token_rec']
-        body = {
-            'access_token': token_result['access_token'],
-            'refresh_token': token_result['refresh_token'],
-            'token_type': 'Bearer',
-        }
-        if application.token_ttl_hours:
-            body['expires_in'] = application.token_ttl_hours * 3600
-        if access_rec.expiration_date:
-            body['expires_at'] = access_rec.expiration_date.isoformat()
-        if application.refresh_token_ttl_hours:
-            body['refresh_expires_in'] = application.refresh_token_ttl_hours * 3600
-        if refresh_rec.expiration_date:
-            body['refresh_expires_at'] = refresh_rec.expiration_date.isoformat()
-        return body
+            raise BadRequest('Invalid JSON body.') from None
 
     def _resolve_version(self, version_code):
         """Resolve API version from URL code and request hostname."""
@@ -74,7 +56,7 @@ class CoreApiAuthController(http.Controller):
         if not version:
             host = api_domain.hostname or 'default'
             raise NotFound(
-                f'Unknown or inactive API version {version_code} for host {host}.'
+                f'Unknown or inactive API version "{version_code}" for host "{host}".'
             )
         return version
 
@@ -86,6 +68,7 @@ class CoreApiAuthController(http.Controller):
         ua = request.httprequest.headers.get('User-Agent')
         application = request.env['core.api.application']
         grant_type = (data.get('grant_type') or kw.get('grant_type') or 'client_credentials').strip()
+        success_message = 'Authentication successful.'
 
         if grant_type == 'client_credentials':
             client_id = (data.get('client_id') or kw.get('client_id') or '').strip()
@@ -93,7 +76,8 @@ class CoreApiAuthController(http.Controller):
 
             candidate = request.env['core.api.application'].sudo().search([
                 ('client_id', '=', client_id),
-            ], limit=1)
+            ], limit=1) if client_id else request.env['core.api.application']
+
             if candidate:
                 try:
                     candidate.check_ip_allowed(ip)
@@ -106,14 +90,17 @@ class CoreApiAuthController(http.Controller):
                         raise TooManyRequests(str(e)) from e
                     raise
 
-            application = request.env['core.api.application'].sudo().authenticate_client(
+            application, auth_error = request.env['core.api.application'].sudo().authenticate_client_with_reason(
                 client_id, client_secret, ip_address=ip,
             )
             if not application:
                 duration = (time.time() - t0) * 1000
-                self._log_auth(candidate, auth_route, ip, ua, 401, False, duration, 'Invalid client credentials')
-                _logger.warning('Core API auth failed for client_id=%s from %s', client_id, ip)
-                raise Unauthorized('Invalid client credentials')
+                self._log_auth(candidate, auth_route, ip, ua, 401, False, duration, auth_error)
+                _logger.warning(
+                    'Core API auth failed for client_id=%s from %s: %s',
+                    client_id or '<empty>', ip, auth_error,
+                )
+                raise Unauthorized(auth_error)
 
             token_result = request.env['core.api.token'].sudo().issue_for_application(application)
 
@@ -125,10 +112,12 @@ class CoreApiAuthController(http.Controller):
             token_result = request.env['core.api.token'].sudo().refresh_for_application(refresh_token)
             if not token_result:
                 duration = (time.time() - t0) * 1000
-                self._log_auth(application, auth_route, ip, ua, 401, False, duration, 'Invalid or expired refresh token')
-                raise Unauthorized('Invalid or expired refresh token. Re-authenticate with client credentials.')
+                error = 'Invalid or expired refresh_token. Re-authenticate with client credentials.'
+                self._log_auth(application, auth_route, ip, ua, 401, False, duration, error)
+                raise Unauthorized(error)
 
             application = token_result['access_token_rec'].application_id
+            success_message = 'Token refreshed successfully.'
             try:
                 application.check_ip_allowed(ip)
                 application.check_auth_rate_limit()
@@ -141,17 +130,14 @@ class CoreApiAuthController(http.Controller):
                 raise
 
         else:
-            raise BadRequest('Unsupported grant_type. Use client_credentials or refresh_token.')
+            raise BadRequest(
+                f'Unsupported grant_type "{grant_type}". Use client_credentials or refresh_token.'
+            )
 
-        body = self._token_response(token_result, application)
         duration = (time.time() - t0) * 1000
         self._log_auth(application, auth_route, ip, ua, 200, True, duration)
 
-        return request.make_response(
-            json.dumps(body),
-            headers=[('Content-Type', 'application/json')],
-            status=200,
-        )
+        return auth_success_response(success_message, token_result, application)
 
     @http.route(
         '/api/<string:version_code>/auth/token',

@@ -2,7 +2,7 @@
 
     'name': 'T4 Core API',
 
-    'version': '19.0.6.0.1',
+    'version': '1.0.0',
 
     'summary': 'Secure external API gateway with client credentials and token auth',
 
@@ -72,7 +72,7 @@ OAuth2-style API gateway for external applications and branch controllers.
 
     'author': 'T4',
 
-    'depends': ['base', 'mail'],
+    'depends': ['base', 'bus', 'mail'],
 
     'data': [
 
@@ -83,9 +83,6 @@ OAuth2-style API gateway for external applications and branch controllers.
         'security/t4_coreapi_rules.xml',
 
         'data/core_api_domain_data.xml',
-        'data/core_api_version_data.xml',
-        'data/core_api_version_migrate.xml',
-        'data/core_api_domain_migrate.xml',
 
         'views/core_api_domain_views.xml',
         'views/core_api_version_views.xml',
@@ -103,12 +100,24 @@ OAuth2-style API gateway for external applications and branch controllers.
 
         'wizard/core_api_application_secret_wizard_views.xml',
 
+        'data/core_api_version_data.xml',
+        'data/core_api_version_migrate.xml',
+        'data/core_api_domain_migrate.xml',
+        'data/core_api_application_migrate.xml',
+        'data/core_api_version_views_sync.xml',
+
         'security/core_api_domain_access.xml',
         'security/core_api_version_access.xml',
 
     ],
 
     'post_init_hook': 'post_init_hook',
+
+    'assets': {
+        'web.assets_backend': [
+            't4_coreapi/static/src/services/**/*',
+        ],
+    },
 
     'installable': True,
 
