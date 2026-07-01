@@ -3,8 +3,8 @@ from .logging import log_core_api
 from .security import check_ip_allowed, get_client_ip
 from .core_api_utils import (
     endpoint,
-    route,
-    get_context,
+    # route,
+    # get_context,
     get_params,
     get_body,
     set_response,
@@ -30,11 +30,11 @@ from .exception import (
 
 __all__ = [
     'endpoint',
-    'route',
+    # 'route',
     'log_core_api',
     'check_ip_allowed',
     'get_client_ip',
-    'get_context',
+    # 'get_context',
     'get_params',
     'get_body',
     'set_response',
