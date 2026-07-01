@@ -84,8 +84,12 @@ OAuth2-style API gateway for external applications and branch controllers.
 
         'data/core_api_domain_data.xml',
 
+        'views/core_api_actions_views.xml',
+
         'views/core_api_domain_views.xml',
+
         'views/core_api_version_views.xml',
+
         'views/core_api_application_views.xml',
 
         'views/core_api_endpoint_views.xml',

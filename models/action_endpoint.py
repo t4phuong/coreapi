@@ -17,17 +17,51 @@ class ActionEndpointManager(models.Model):
         domain=[('transient', '=', False)],
         ondelete='cascade'
     )
-    # service_id = fields.Many2one(
-    #     'service.endpoints', 
-    #     string='Service', 
-    #     ondelete='cascade'
-    # )
+   
     generated_action_ids = fields.One2many(
         'ir.actions.server', 
         'endpoint_manager_id', 
         string='Server Actions',
-        readonly=True
+        # readonly=True
     )
+
+    core_api_action_ids = fields.One2many(
+        'ir.actions.core_api', 
+        'endpoint_manager_id', 
+        string='Core Api Actions',
+        # readonly=True
+    )
+
+    def _generate_core_api_action(self):
+        self.ensure_one()
+        CAaction = self.env['ir.actions.core_api'].sudo()
+        target_model_name = self.model_id.model
+        
+        target_class = type(self.env[target_model_name])
+        
+        for method_name, func in inspect.getmembers(target_class, predicate=callable):
+            if hasattr(func, '_is_endpoint'):
+                action_name = getattr(func, '_endpoint_name')
+
+                code_body = f"model.{method_name}()"
+
+                existing_action = CAaction.search([
+                    ('endpoint_manager_id', '=', self.id),
+                    ('name', '=', action_name)
+                ], limit=1)
+
+                vals = {
+                    'name': action_name,
+                    'model_id': self.model_id.id,
+                    'code': code_body,
+                    'endpoint_manager_id': self.id,
+                }
+
+                if existing_action:
+                    existing_action.write(vals)
+                else:
+                    CAaction.create(vals)
+
 
     def _generate_endpoints(self):
         self.ensure_one()
@@ -39,11 +73,6 @@ class ActionEndpointManager(models.Model):
         for method_name, func in inspect.getmembers(target_class, predicate=callable):
             if hasattr(func, '_is_endpoint'):
                 action_name = getattr(func, '_endpoint_name')
-
-                # code_body = textwrap.dedent(f"""
-                #     res = model.{method_name}()
-                #     env['core.api.application'].set_api_response(res)
-                # """)
 
                 code_body = f"model.{method_name}()"
 
@@ -72,6 +101,26 @@ class ActionEndpointManager(models.Model):
         self.ensure_one()
 
         self._generate_endpoints()
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Success'),
+                'message': _('Endpoints have been synchronized for model %s.') % self.model_id.model,
+                'type': 'success',
+                'sticky': False,
+                'next': {
+                    'type': 'ir.actions.client',
+                    'tag': 'reload',
+                },
+            }
+        }
+    
+    def action_generate_core_api_action(self):
+        self.ensure_one()
+
+        self._generate_core_api_action()
         
         return {
             'type': 'ir.actions.client',

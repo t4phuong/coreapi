@@ -3,7 +3,7 @@ import json
 import logging
 from functools import wraps
 from odoo.http import request
-
+from odoo.addons.t4_coreapi.utils.response import STATUS_ERROR, STATUS_SUCCESS
 from odoo.addons.t4_coreapi.utils.exception import ensure_dict, CoreApiInvalidBody
 
 _logger = logging.getLogger(__name__)
@@ -126,12 +126,11 @@ def get_body(obj=None):
 
 def set_response(data=False, message='Request processed successfully.', status_code=200):
     """Build a standard JSON API response via set_api_response."""
-    from odoo.addons.t4_coreapi.utils.response import STATUS_ERROR, STATUS_SUCCESS
 
     response_payload = {
         'status_code': status_code,
         'status': STATUS_SUCCESS if 200 <= status_code < 300 else STATUS_ERROR,
-        'message': message,
+        'message': message if message else "something wrong!",
     }
     if data is not False and data is not None:
         response_payload['data'] = data
