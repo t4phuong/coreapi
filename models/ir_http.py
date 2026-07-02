@@ -9,6 +9,7 @@ from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.http import request
 
 from odoo.addons.t4_coreapi.utils.response import api_error_response
+from odoo.addons.t4_coreapi.utils.routing import is_auth_token_path, is_gateway_path
 from odoo.addons.t4_coreapi.utils.security import get_client_ip
 
 
@@ -18,7 +19,23 @@ class IrHttp(models.AbstractModel):
     @classmethod
     def _is_core_api_request(cls):
         """Return True when the current request targets a Core API HTTP route."""
-        return (request.httprequest.path or '').startswith('/api/')
+        path = request.httprequest.path or ''
+        if is_auth_token_path(path):
+            return True
+        if not is_gateway_path(path):
+            return False
+        service_code = path.strip('/').split('/')[0]
+        if not service_code:
+            return False
+        try:
+            if request.db and getattr(request, 'env', None):
+                return bool(request.env['core.api.application'].sudo().search_count([
+                    ('service_code', '=', service_code),
+                    ('state', '=', 'active'),
+                ]))
+        except Exception:
+            return False
+        return False
 
     @classmethod
     def _extract_bearer_token(cls):
@@ -69,7 +86,7 @@ class IrHttp(models.AbstractModel):
 
     @classmethod
     def _handle_error(cls, exception):
-        """Return JSON error bodies for all /api/* routes."""
+        """Return JSON error bodies for Core API gateway routes."""
         if cls._is_core_api_request():
             return cls._handle_core_api_error(exception)
         return super()._handle_error(exception)

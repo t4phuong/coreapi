@@ -1,12 +1,13 @@
 # Part of T4 Core API. See LICENSE file for full copyright and licensing details.
 
 import logging
+import re
 import secrets
 
 from passlib.context import CryptContext
 
 from odoo import _, api, fields, models
-from odoo.exceptions import AccessError, UserError
+from odoo.exceptions import AccessError, UserError, ValidationError
 from odoo.http import request
 
 _logger = logging.getLogger(__name__)
@@ -59,14 +60,31 @@ class CoreApiApplication(models.Model):
     token_count = fields.Integer(compute='_compute_token_count')
     active_token_id = fields.Many2one(
         'core.api.token',
-        string='Current Token',
+        string='Current Access Token',
         compute='_compute_active_token',
         store=False,
     )
-    token_expiration = fields.Datetime(
-        string='Token Expires',
-        related='active_token_id.expiration_date',
-        readonly=True,
+    has_active_token = fields.Boolean(
+        string='Has Active Token',
+        compute='_compute_traffic_status',
+    )
+    api_requests_per_minute = fields.Integer(
+        string='API Requests (last min)',
+        compute='_compute_traffic_status',
+    )
+    auth_requests_per_minute = fields.Integer(
+        string='Auth Requests (last min)',
+        compute='_compute_traffic_status',
+    )
+    traffic_status = fields.Selection(
+        [
+            ('normal', 'Normal'),
+            ('elevated', 'Elevated'),
+            ('suspicious', 'Suspicious'),
+        ],
+        string='Traffic Status',
+        compute='_compute_traffic_status',
+        help='Based on request volume in the last minute versus configured rate limits.',
     )
     credentials_pending = fields.Boolean(
         string='Credentials Not Yet Viewed',
@@ -80,18 +98,19 @@ class CoreApiApplication(models.Model):
         required=True,
         default=lambda self: self.env['core.api.domain'].get_default().id,
         tracking=True,
-        help='Public hostname group for this application. API versions and routes belong to this host.',
+        help='Public hostname used in integration examples for this application.',
     )
-    default_version_id = fields.Many2one(
-        'core.api.version',
-        string='Default API Version',
-        domain="[('domain_id', '=', domain_id), ('active', '=', True)]",
-        help='The only API version this application may call. '
-             'Routes on other versions can be prepared in the form but are blocked at runtime.',
+    service_code = fields.Char(
+        string='Service Code',
+        required=True,
+        copy=False,
+        tracking=True,
+        index=True,
+        help='Unique first URL segment for this application, e.g. gk in /gk/v1/gate1.',
     )
-    domain_version_count = fields.Integer(
-        compute='_compute_domain_version_count',
-        string='Active API Versions on Domain',
+    api_version_count = fields.Integer(
+        compute='_compute_api_version_count',
+        string='Active API Versions',
     )
     endpoint_ids = fields.One2many(
         'core.api.endpoint',
@@ -146,20 +165,125 @@ class CoreApiApplication(models.Model):
     )
 
     _client_id_unique = models.Constraint('unique(client_id)', 'Client ID must be unique.')
+    _service_code_unique = models.Constraint(
+        'unique(service_code)',
+        'Service code must be unique across applications.',
+    )
 
-    @api.depends('domain_id', 'domain_id.version_ids', 'domain_id.version_ids.active')
-    def _compute_domain_version_count(self):
-        """Count active API versions on the application's host domain."""
+    @api.constrains('service_code')
+    def _check_service_code(self):
+        """Reject empty or invalid service codes."""
         for rec in self:
-            rec.domain_version_count = len(rec.domain_id.version_ids.filtered('active'))
+            code = (rec.service_code or '').strip()
+            if not code:
+                raise ValidationError(_('Service code is required.'))
+            if '/' in code or ' ' in code:
+                raise ValidationError(_('Service code must not contain slashes or spaces.'))
+
+    @api.model
+    def get_by_service_code(self, service_code):
+        """Return an active application for the given gateway service code."""
+        code = (service_code or '').strip()
+        if not code:
+            return self.browse()
+        return self.sudo().search([
+            ('service_code', '=', code),
+            ('state', '=', 'active'),
+        ], limit=1)
+
+    @api.model
+    def _generate_service_code(self, name=None, exclude_id=None):
+        """Build a unique service code slug from the application name."""
+        slug = re.sub(r'[^a-z0-9]+', '', (name or 'app').lower())[:16] or 'app'
+        candidate = slug
+        suffix = 1
+        while self.search_count([
+            ('service_code', '=', candidate),
+            *( [('id', '!=', exclude_id)] if exclude_id else [] ),
+        ]):
+            candidate = f'{slug}{suffix}'
+            suffix += 1
+        return candidate
+
+    @api.model
+    def _migrate_service_codes(self):
+        """Backfill unique service codes on existing applications after upgrade."""
+        Application = self.with_context(active_test=False)
+        cr = self.env.cr
+
+        cr.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'core_api_domain' AND column_name = 'service_code'
+        """)
+        if cr.fetchone():
+            cr.execute("""
+                UPDATE core_api_application AS app
+                SET service_code = domain.service_code
+                FROM core_api_domain AS domain
+                WHERE app.domain_id = domain.id
+                  AND (app.service_code IS NULL OR app.service_code = '')
+                  AND domain.service_code IS NOT NULL
+                  AND domain.service_code <> ''
+            """)
+
+        for app in Application.search([
+            '|', ('service_code', '=', False), ('service_code', '=', ''),
+        ]):
+            app.service_code = self._generate_service_code(app.name, exclude_id=app.id)
+
+        seen = {}
+        for app in Application.search([], order='id'):
+            code = (app.service_code or '').strip()
+            if not code or code in seen:
+                app.service_code = self._generate_service_code(app.name, exclude_id=app.id)
+                code = app.service_code
+            seen[code] = app.id
+
+    @api.model
+    def _dedupe_service_codes_sql(self):
+        """Ensure application service codes are unique before DB constraints apply."""
+        cr = self.env.cr
+        cr.execute("""
+            SELECT 1 FROM information_schema.tables
+            WHERE table_name = 'core_api_application'
+        """)
+        if not cr.fetchone():
+            return
+        cr.execute("""
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = 'core_api_application' AND column_name = 'service_code'
+        """)
+        if not cr.fetchone():
+            cr.execute("ALTER TABLE core_api_application ADD COLUMN service_code VARCHAR")
+
+        cr.execute("""
+            UPDATE core_api_application
+            SET service_code = 'app' || id::text
+            WHERE service_code IS NULL OR service_code = ''
+        """)
+        cr.execute("""
+            UPDATE core_api_application AS app
+            SET service_code = 'app' || app.id::text
+            WHERE app.id <> (
+                SELECT MIN(id) FROM core_api_application
+                WHERE service_code = app.service_code
+            )
+        """)
+
+    @api.depends()
+    def _compute_api_version_count(self):
+        """Count globally active API versions available for route tabs."""
+        count = self.env['core.api.version'].search_count([('active', '=', True)])
+        for rec in self:
+            rec.api_version_count = count
 
     def _ensure_version_tabs(self):
-        """Create one route tab per active API version on the application's domain."""
+        """Create one route tab per active API version."""
         Tab = self.env['core.api.application.version.tab']
+        versions = self.env['core.api.version'].search([('active', '=', True)])
         for app in self:
-            if not app.id or not app.domain_id:
+            if not app.id:
                 continue
-            versions = app.domain_id.version_ids.filtered('active')
             existing = {tab.version_id.id: tab for tab in app.version_tab_ids}
             for version in versions:
                 if version.id not in existing:
@@ -178,61 +302,27 @@ class CoreApiApplication(models.Model):
 
     @api.onchange('domain_id')
     def _onchange_domain_id(self):
-        """Clear routes and reset default version when the host domain changes."""
-        self.endpoint_ids = [(5, 0, 0)]
-        self.version_tab_ids = [(5, 0, 0)]
-        versions = self.domain_id.version_ids.filtered('active').sorted('sequence')
-        self.default_version_id = versions[:1]
-        result = {
-            'domain': {
-                'default_version_id': [('domain_id', '=', self.domain_id.id), ('active', '=', True)],
-            },
-        }
-        if self.domain_id and not versions:
-            result['warning'] = {
-                'title': _('No API versions'),
-                'message': _(
-                    'Host domain "%(domain)s" has no API versions. '
-                    'Create them on the domain first.',
-                    domain=self.domain_id.display_name,
-                ),
+        """Warn when no API versions exist yet."""
+        if not self.env['core.api.version'].search_count([('active', '=', True)]):
+            return {
+                'warning': {
+                    'title': _('No API versions'),
+                    'message': _(
+                        'No active API versions exist yet. Create them under Configuration → API Versions.',
+                    ),
+                },
             }
-        return result
+        return {}
 
-    def write(self, vals):
-        """Remove all routes when the host domain changes on a saved application."""
-        if 'domain_id' in vals:
-            for rec in self:
-                if rec.domain_id.id != vals['domain_id']:
-                    rec.endpoint_ids.unlink()
-                    rec.version_tab_ids.unlink()
-            if len(self) == 1 and 'default_version_id' not in vals:
-                version = self.env['core.api.version'].search([
-                    ('domain_id', '=', vals['domain_id']),
-                    ('active', '=', True),
-                ], order='sequence', limit=1)
-                if version:
-                    vals['default_version_id'] = version.id
-        result = super().write(vals)
-        if 'domain_id' in vals:
-            self._ensure_version_tabs()
-        return result
 
     @api.model
     def default_get(self, fields_list):
-        """Pre-fill default API version from the default host domain."""
+        """Pre-fill the default host domain."""
         defaults = super().default_get(fields_list)
-        domain = self.env['core.api.domain'].browse(defaults.get('domain_id'))
-        if not domain:
+        if 'domain_id' in fields_list and not defaults.get('domain_id'):
             domain = self.env['core.api.domain'].get_default()
-            if domain and 'domain_id' in fields_list:
+            if domain:
                 defaults['domain_id'] = domain.id
-        if 'default_version_id' in fields_list and not defaults.get('default_version_id') and domain:
-            version = domain.version_ids.filtered('active').sorted('sequence')[:1]
-            if not version:
-                version = self.env['core.api.version'].get_default_version()
-            if version and version.domain_id == domain:
-                defaults['default_version_id'] = version.id
         return defaults
 
     @api.depends('state')
@@ -257,33 +347,31 @@ class CoreApiApplication(models.Model):
         'client_id',
         'domain_id',
         'domain_id.base_url',
-        'default_version_id',
-        'default_version_id.code',
-        'default_version_id.path_prefix',
-        'default_version_id.public_base_url',
-        'default_version_id.domain_id.base_url',
+        'service_code',
         'endpoint_ids.route_pattern',
         'endpoint_ids.version_id',
+        'endpoint_ids.route_suffix',
     )
     def _compute_api_integration_guide(self):
         """Build auth URLs and cURL samples shown on the application form."""
+        from odoo.addons.t4_coreapi.utils.routing import AUTH_TOKEN_PATH, build_gateway_path
+
         for rec in self:
-            version = rec.default_version_id
-            if not version or version.domain_id != rec.domain_id:
-                version = rec.domain_id.version_ids.filtered('active').sorted('sequence')[:1]
-            if not version:
-                version = self.env['core.api.version'].get_default_version()
-            version_public = (version.public_base_url if version else '').rstrip('/')
-            if not version_public:
-                version_public = (
+            service_code = (rec.service_code or '').strip('/')
+            base = (rec.domain_id.base_url or '').rstrip('/')
+            if not base:
+                base = (
                     self.env['ir.config_parameter'].sudo().get_param('web.base.url') or ''
                 ).rstrip('/')
-                if version:
-                    version_public = f'{version_public}{(version.path_prefix or "/api/v1").rstrip("/")}'
-            auth_url = f'{version_public}/auth/token'
+            version = rec.endpoint_ids[:1].version_id if rec.endpoint_ids else False
+            if not version:
+                version = self.env['core.api.version'].get_default_version()
+            version_code = version.code if version else 'v1'
+            gateway_base = build_gateway_path(service_code, version_code).rstrip('/')
+            auth_url = f'{base}{AUTH_TOKEN_PATH}'
             db_name = self.env.cr.dbname
             rec.api_database_name = db_name
-            rec.api_base_url = version_public
+            rec.api_base_url = f'{base}{gateway_base}'
             rec.auth_endpoint_url = auth_url
             client_id = rec.client_id or '<client_id>'
             rec.auth_curl_example = (
@@ -302,13 +390,8 @@ class CoreApiApplication(models.Model):
                 f'  -d \'{{"grant_type": "refresh_token", '
                 f'"refresh_token": "<refresh_token>"}}\''
             )
-            sample_endpoints = rec.endpoint_ids.filtered(
-                lambda e: not version or e.version_id == version
-            ) or rec.endpoint_ids
-            sample_suffix = (
-                sample_endpoints[:1].route_suffix if sample_endpoints else 'your-route'
-            )
-            sample_url = f'{version_public}/{sample_suffix}?db={db_name}'
+            sample_suffix = rec.endpoint_ids[:1].route_suffix if rec.endpoint_ids else 'gate1'
+            sample_url = f'{base}{build_gateway_path(service_code, version_code, sample_suffix)}?db={db_name}'
             rec.api_call_curl_example = (
                 f'curl -X GET "{sample_url}" \\\n'
                 f'  -H "Authorization: Bearer <access_token>" \\\n'
@@ -316,17 +399,99 @@ class CoreApiApplication(models.Model):
                 f'  -H "X-Odoo-Database: {db_name}"'
             )
 
+    @api.model
+    def _find_active_access_token(self, application):
+        """Return the current valid access token record for an application."""
+        now = fields.Datetime.now()
+        return application.token_ids.filtered(
+            lambda t: t.token_type == 'access'
+            and t.active
+            and (not t.expiration_date or t.expiration_date >= now)
+        )[:1]
+
+    @api.model
+    def _traffic_snapshot(self, application):
+        """Return recent request counts and traffic status for one application."""
+        if not application.id:
+            return 0, 0, 'normal', False
+
+        Log = application.env['core.api.log'].sudo()
+        api_count = Log.count_recent(
+            [('application_id', '=', application.id), ('event_type', '=', 'api')],
+            minutes=1,
+        )
+        auth_count = Log.count_recent(
+            [('application_id', '=', application.id), ('event_type', '=', 'auth')],
+            minutes=1,
+        )
+
+        api_limit = application.rate_limit_per_minute or 0
+        auth_limit = application.auth_rate_limit_per_minute or 0
+        elevated = False
+        suspicious = False
+
+        if api_limit:
+            if api_count >= api_limit:
+                suspicious = True
+            elif api_count >= max(1, int(api_limit * 0.8)):
+                elevated = True
+        if auth_limit:
+            if auth_count >= auth_limit:
+                suspicious = True
+            elif auth_count >= max(1, int(auth_limit * 0.8)):
+                elevated = True
+
+        if suspicious:
+            status = 'suspicious'
+        elif elevated:
+            status = 'elevated'
+        else:
+            status = 'normal'
+
+        has_token = bool(self._find_active_access_token(application))
+        return api_count, auth_count, status, has_token
+
     @api.depends('token_ids.active', 'token_ids.expiration_date', 'token_ids.token_type')
     def _compute_active_token(self):
-        """Pick the current valid access token for display on the application form."""
-        now = fields.Datetime.now()
+        """Pick the current valid access token used by this application."""
         for rec in self:
-            token = rec.token_ids.filtered(
-                lambda t: t.token_type == 'access'
-                and t.active
-                and (not t.expiration_date or t.expiration_date >= now)
-            )[:1]
-            rec.active_token_id = token
+            rec.active_token_id = self._find_active_access_token(rec)
+
+    def _compute_traffic_status(self):
+        """Compute live request rates and traffic health for each application."""
+        for rec in self:
+            api_count, auth_count, status, has_token = self._traffic_snapshot(rec)
+            rec.api_requests_per_minute = api_count
+            rec.auth_requests_per_minute = auth_count
+            rec.traffic_status = status
+            rec.has_active_token = has_token
+
+    def check_suspicious_and_revoke(self):
+        """Revoke the active token pair when traffic exceeds configured limits."""
+        Token = self.env['core.api.token'].sudo()
+        for app in self:
+            _api_count, _auth_count, status, has_token = self._traffic_snapshot(app)
+            if status != 'suspicious' or not has_token:
+                continue
+            token = self._find_active_access_token(app)
+            if not token:
+                continue
+            Token.search([
+                ('token_pair_id', '=', token.token_pair_id),
+                ('active', '=', True),
+            ]).action_revoke()
+            app.message_post(body=_(
+                'Active token revoked automatically due to suspicious request rate '
+                '(API: %(api)s/min, Auth: %(auth)s/min).',
+                api=_api_count,
+                auth=_auth_count,
+            ))
+            app._notify_application_form_reload()
+            _logger.warning(
+                'Core API auto-revoked token for application %s (suspicious traffic)',
+                app.client_id,
+            )
+        return True
 
     @api.model_create_multi
     def create(self, vals_list):
@@ -335,6 +500,8 @@ class CoreApiApplication(models.Model):
         for vals in vals_list:
             vals = dict(vals)
             plaintext_secret = vals.pop('plaintext_client_secret', None)
+            if not vals.get('service_code'):
+                vals['service_code'] = self._generate_service_code(vals.get('name'))
             if not vals.get('client_id'):
                 vals['client_id'] = self._generate_client_id()
             if plaintext_secret:
@@ -453,6 +620,7 @@ class CoreApiApplication(models.Model):
         if not token:
             raise UserError(_('No active token to revoke.'))
         token.action_revoke()
+        self._notify_application_form_reload()
         return {
             'type': 'ir.actions.client',
             'tag': 'display_notification',
@@ -473,7 +641,10 @@ class CoreApiApplication(models.Model):
             'res_model': 'core.api.token',
             'view_mode': 'list,form',
             'domain': [('application_id', '=', self.id)],
-            'context': {'default_application_id': self.id},
+            'context': {
+                'default_application_id': self.id,
+                'active_test': False,
+            },
         }
 
     def action_view_logs(self):
@@ -567,16 +738,21 @@ class CoreApiApplication(models.Model):
         self.ensure_one()
         if self.state != 'active':
             raise AccessError(_('Application "%s" is inactive.', self.name))
-        if version_id and self.default_version_id and version_id != self.default_version_id.id:
-            raise AccessError(_(
-                'Application "%(app)s" is restricted to API version %(version)s.',
-                app=self.name,
-                version=self.default_version_id.display_name,
-            ))
-        endpoints = self.endpoint_ids.filtered(lambda e: e.code == endpoint_code)
+        endpoints = self.endpoint_ids.filtered(
+            lambda e: e.route_active and e.code == endpoint_code
+        )
         if version_id:
             endpoints = endpoints.filtered(lambda e: e.version_id.id == version_id)
         if not endpoints:
+            inactive = self.endpoint_ids.filtered(
+                lambda e: not e.route_active and e.code == endpoint_code
+                and (not version_id or e.version_id.id == version_id)
+            )
+            if inactive:
+                raise AccessError(
+                    _('Gateway route "%(endpoint)s" is inactive for application "%(app)s".',
+                      endpoint=endpoint_code, app=self.name)
+                )
             raise AccessError(
                 _('Application "%(app)s" is not allowed to access API: %(endpoint)s',
                   app=self.name, endpoint=endpoint_code)
@@ -586,10 +762,11 @@ class CoreApiApplication(models.Model):
     def check_route_access(self, path, method=None):
         """Match request path against allowed endpoint route patterns."""
         self.ensure_one()
-        if not self.endpoint_ids:
-            raise AccessError(_('Application "%s" has no allowed APIs configured.', self.name))
+        active_endpoints = self.endpoint_ids.filtered('route_active')
+        if not active_endpoints:
+            raise AccessError(_('Application "%s" has no active APIs configured.', self.name))
         normalized = (path or '').split('?')[0].rstrip('/') or '/'
-        for endpoint in self.endpoint_ids:
+        for endpoint in active_endpoints:
             pattern = (endpoint.route_pattern or '').rstrip('/') or '/'
             if normalized == pattern or normalized.startswith(f'{pattern}/'):
                 return endpoint.code

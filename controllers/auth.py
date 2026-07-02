@@ -4,12 +4,13 @@ import json
 import logging
 import time
 
-from werkzeug.exceptions import BadRequest, NotFound, TooManyRequests, Unauthorized
+from werkzeug.exceptions import BadRequest, TooManyRequests, Unauthorized
 
 from odoo import http
 from odoo.http import request
 
 from odoo.addons.t4_coreapi.utils.response import auth_success_response
+from odoo.addons.t4_coreapi.utils.routing import AUTH_TOKEN_PATH
 from odoo.addons.t4_coreapi.utils.security import (
     check_ip_auth_rate_limit,
     get_client_ip,
@@ -46,23 +47,9 @@ class CoreApiAuthController(http.Controller):
         except json.JSONDecodeError:
             raise BadRequest('Invalid JSON body.') from None
 
-    def _resolve_version(self, version_code):
-        """Resolve API version from URL code and request hostname."""
-        api_domain = request.env['core.api.domain'].sudo().get_from_request(request.httprequest)
-        version = request.env['core.api.version'].sudo().get_active_by_code(
-            version_code,
-            api_domain=api_domain,
-        )
-        if not version:
-            host = api_domain.hostname or 'default'
-            raise NotFound(
-                f'Unknown or inactive API version "{version_code}" for host "{host}".'
-            )
-        return version
-
-    def _issue_token_impl(self, version, data, kw):
+    def _issue_token_impl(self, data, kw):
         """Handle client_credentials and refresh_token grants."""
-        auth_route = f'{version.path_prefix.rstrip("/")}/auth/token'
+        auth_route = AUTH_TOKEN_PATH
         t0 = time.time()
         ip = get_client_ip()
         ua = request.httprequest.headers.get('User-Agent')
@@ -136,24 +123,25 @@ class CoreApiAuthController(http.Controller):
 
         duration = (time.time() - t0) * 1000
         self._log_auth(application, auth_route, ip, ua, 200, True, duration)
+        application.check_suspicious_and_revoke()
 
         return auth_success_response(success_message, token_result, application)
 
     @http.route(
-        '/api/<string:version_code>/auth/token',
+        AUTH_TOKEN_PATH,
         type='http',
         auth='none',
         methods=['POST'],
         csrf=False,
         save_session=False,
     )
-    def issue_token(self, version_code, **kw):
+    def issue_token(self, **kw):
         """Exchange client credentials or a refresh token for new API tokens."""
         try:
             check_ip_auth_rate_limit(request.env, get_client_ip())
         except Exception as e:
             raise TooManyRequests(str(e)) from e
 
-        version = self._resolve_version(version_code)
         data = self._parse_request_data(kw)
-        return self._issue_token_impl(version, data, kw)
+        return self._issue_token_impl(data, kw)
+
