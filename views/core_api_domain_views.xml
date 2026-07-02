@@ -10,7 +10,6 @@
                 <field name="name"/>
                 <field name="hostname"/>
                 <field name="base_url"/>
-                <field name="version_count"/>
                 <field name="is_default"/>
                 <field name="active"/>
             </list>
@@ -23,12 +22,6 @@
         <field name="arch" type="xml">
             <form string="API Host Domain">
                 <sheet>
-                    <div class="oe_button_box" name="button_box">
-                        <button class="oe_stat_button" icon="fa-code-fork" type="object"
-                                name="action_view_versions">
-                            <field name="version_count" widget="statinfo" string="Versions"/>
-                        </button>
-                    </div>
                     <widget name="web_ribbon" title="Inactive" bg_color="text-bg-danger"
                             invisible="active"/>
                     <group>
@@ -46,7 +39,7 @@
                     <field name="description" placeholder="Describe this host and which clients use it…"/>
                     <div class="alert alert-info" role="alert" invisible="is_default">
                         Point DNS for this hostname to your Odoo server.
-                        Clients call <code>https://your-host/api/v1/…</code> on this host.
+                        Each application uses its own service code in the URL path.
                     </div>
                 </sheet>
             </form>

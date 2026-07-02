@@ -33,7 +33,28 @@ class CoreApiToken(models.Model):
         index=True,
     )
     application_name = fields.Char(related='application_id.name', store=True)
+    service_code = fields.Char(related='application_id.service_code', store=True, readonly=True)
     client_id = fields.Char(related='application_id.client_id', store=True, index=True)
+    application_state = fields.Selection(related='application_id.state', readonly=True)
+    traffic_status = fields.Selection(related='application_id.traffic_status', readonly=True)
+    api_requests_per_minute = fields.Integer(
+        related='application_id.api_requests_per_minute',
+        readonly=True,
+        string='API Requests (last min)',
+    )
+    auth_requests_per_minute = fields.Integer(
+        related='application_id.auth_requests_per_minute',
+        readonly=True,
+        string='Auth Requests (last min)',
+    )
+    rate_limit_per_minute = fields.Integer(
+        related='application_id.rate_limit_per_minute',
+        readonly=True,
+    )
+    auth_rate_limit_per_minute = fields.Integer(
+        related='application_id.auth_rate_limit_per_minute',
+        readonly=True,
+    )
     token_type = fields.Selection(
         [('access', 'Access Token'), ('refresh', 'Refresh Token')],
         string='Type',
@@ -47,6 +68,15 @@ class CoreApiToken(models.Model):
         help='Links access and refresh tokens issued together.',
     )
     active = fields.Boolean(default=True)
+    token_state = fields.Selection(
+        [
+            ('active', 'Active'),
+            ('revoked', 'Revoked'),
+        ],
+        string='Status',
+        compute='_compute_token_state',
+        search='_search_token_state',
+    )
     expiration_date = fields.Datetime(index=True)
     last_used_at = fields.Datetime(readonly=True)
     last_used_ip = fields.Char(readonly=True)
@@ -54,6 +84,19 @@ class CoreApiToken(models.Model):
     token_hash = fields.Char(readonly=True, groups='base.group_system')
 
     _index_unique = models.Constraint('unique(token_index)', 'Token index must be unique.')
+
+    @api.depends('active')
+    def _compute_token_state(self):
+        for token in self:
+            token.token_state = 'active' if token.active else 'revoked'
+
+    def _search_token_state(self, operator, value):
+        if operator not in ('=', '!='):
+            return []
+        want_active = value == 'active'
+        if operator == '!=':
+            want_active = not want_active
+        return [('active', '=', want_active)]
 
     @api.model
     def _generate_plaintext(self):
@@ -65,7 +108,7 @@ class CoreApiToken(models.Model):
         """Create one hashed token record and return (plaintext, record)."""
         plaintext = self._generate_plaintext()
         token_rec = self.sudo().create({
-            'name': f'{name_suffix} {fields.Datetime.now()}',
+            'name': f'{application.name} — {name_suffix}',
             'application_id': application.id,
             'token_type': token_type,
             'token_pair_id': pair_id,
@@ -111,14 +154,14 @@ class CoreApiToken(models.Model):
             'refresh',
             refresh_expiration,
             pair_id,
-            'Refresh token',
+            'Refresh',
         )
         access_plaintext, access_rec = self._create_token_record(
             application,
             'access',
             access_expiration,
             pair_id,
-            'Access token',
+            'Access',
         )
 
         ip = request.httprequest.environ.get('REMOTE_ADDR', 'n/a') if request else 'n/a'
@@ -196,6 +239,8 @@ class CoreApiToken(models.Model):
                 token.client_id,
                 token.id,
             )
+            if token.application_id:
+                token.application_id._notify_application_form_reload()
 
     @api.autovacuum
     def _gc_expired_tokens(self):
@@ -208,3 +253,23 @@ class CoreApiToken(models.Model):
         if expired:
             expired.write({'active': False})
             _logger.info('Core API: deactivated %s expired token(s).', len(expired))
+
+    @api.model
+    def _gc_old_tokens(self):
+        """Delete revoked tokens older than the configured retention window."""
+        days = int(self.env['ir.config_parameter'].sudo().get_param(
+            't4_coreapi.token_retention_days', '7',
+        ))
+        limit = fields.Datetime.subtract(fields.Datetime.now(), days=days)
+        old = self.sudo().with_context(active_test=False).search([
+            ('active', '=', False),
+            ('create_date', '<', limit),
+        ])
+        if old:
+            count = len(old)
+            old.unlink()
+            _logger.info(
+                'Core API: deleted %s revoked token(s) older than %s day(s).',
+                count, days,
+            )
+        return True
