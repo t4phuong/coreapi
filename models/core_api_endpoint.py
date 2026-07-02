@@ -61,7 +61,8 @@ class CoreApiEndpoint(models.Model):
         help='Comma-separated HTTP methods applications may use.',
     )
     action_id = fields.Many2one(
-        'ir.actions.server',
+        # 'ir.actions.server',
+        'ir.actions.core_api',
         string='Server Action',
         help='Executed after auth check. Use env.context core_api_* keys in the action.',
     )

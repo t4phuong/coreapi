@@ -28,18 +28,46 @@ class IrActionsCoreApi(models.Model):
     code = fields.Text(string='Python Code', required=True)
 
     _unique_name = models.Constraint(
-        'UNIQUE(enpoint_manager_id, name)',
+        'UNIQUE(endpoint_manager_id, name)',
         'unique name with manager',
     )
 
     @api.model
-    def run(self, action_id):
-        self.unsure_one()
+    def run(self):
+        self.ensure_one()
+        ctx = self.env.context
+
+        if self.model_id.model not in self.env:
+            raise ValueError(f"Model {self.model_id.model} not found.")
         
-        actions_server = self.env['ir.actions.server'].sudo()
+        model = self.env[self.model_id.model]
+    
+        eval_context = {
+            # core Odoo
+            "env": self.env,
+            "model": model,
+    
+            # HTTP / API context
+            "request_method": ctx.get("core_api_method"),
+            "route": ctx.get("core_api_route"),
+            "endpoint": ctx.get("core_api_endpoint_code"),
+    
+            # payload
+            "body": ctx.get("core_api_body"),
+            "params": ctx.get("core_api_params"),
+    
+            # active records (quan trọng)
+            "active_model": ctx.get("active_model"),
+            "active_id": ctx.get("active_id"),
+            "active_ids": ctx.get("active_ids"),
+    
+            # optional convenience
+            "application_id": ctx.get("core_api_application_id"),
+        }
 
-        eval_context = actions_server._get_eval_context(self)
-
-        safe_eval(self.code.strip(), eval_context, mode="exec", nocopy=True)
+        safe_eval(
+            self.code.strip(), 
+            eval_context, 
+            mode="exec")
 
         return eval_context.get('action', False)

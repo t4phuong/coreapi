@@ -3,15 +3,15 @@
 
     <!-- Read-only picker: no create or edit from Gateway Routes -->
     <record id="view_ir_actions_server_core_api_picker_list" model="ir.ui.view">
-        <field name="name">ir.actions.server.core.api.picker.list</field>
-        <field name="model">ir.actions.server</field>
+        <field name="name">ir.actions.core_api.core.api.picker.list</field>
+        <field name="model">ir.actions.core_api</field>
         <field name="priority">99</field>
         <field name="arch" type="xml">
             <list string="Server Actions" create="false" edit="false" delete="false" import="false">
                 <field name="name"/>
                 <field name="model_id"/>
-                <field name="state"/>
-                <field name="usage"/>
+                <!-- <field name="state"/>
+                <field name="usage"/> -->
             </list>
         </field>
     </record>
