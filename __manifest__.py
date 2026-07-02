@@ -28,7 +28,7 @@ OAuth2-style API gateway for external applications and branch controllers.
 
 **Authentication**
 
-* ``POST https://your-host/api/v1/auth/token`` — host domains group API versions (e.g. ashaf.xyz/api/v1)
+* ``POST https://your-host/auth/token`` — global token endpoint (no service code or version)
 
 * Refresh tokens: ``grant_type=refresh_token`` returns a new access + refresh pair
 
@@ -58,7 +58,7 @@ OAuth2-style API gateway for external applications and branch controllers.
 
 
 
-    @http.route('/api/v1/my-route', auth='core_api', ...)
+    @http.route('/gk/v1/my-route', auth='core_api', ...)
 
     @validate_core_api('my_endpoint')
 
@@ -109,11 +109,14 @@ OAuth2-style API gateway for external applications and branch controllers.
         'data/core_api_domain_migrate.xml',
         'data/core_api_application_migrate.xml',
         'data/core_api_version_views_sync.xml',
+        'data/core_api_cron.xml',
 
         'security/core_api_domain_access.xml',
         'security/core_api_version_access.xml',
 
     ],
+
+    'pre_init_hook': 'pre_init_hook',
 
     'post_init_hook': 'post_init_hook',
 

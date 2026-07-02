@@ -41,38 +41,6 @@ def route(route=None, name=None):
     return decorator
 
 
-# def get_context(kw, body, ctype='http'):
-#     """Build the core_api context dict injected into the Odoo environment."""
-#     data_body = {}
-
-#     if body:
-#         try:
-#             body_str = body.decode('utf-8') if isinstance(body, bytes) else body
-#             data_body = json.loads(body_str) if body_str else {}
-#         except (json.JSONDecodeError, AttributeError):
-#             data_body = {"raw": body}
-
-#     if ctype == 'json':
-#         return {
-#             _CONTEXT_NAME: {
-#                 "params": kw or {},
-#                 "body": data_body or kw or {},
-#                 "is_json": True,
-#             }
-#         }
-
-#     if ctype == 'http':
-#         return {
-#             _CONTEXT_NAME: {
-#                 "params": kw or {},
-#                 "body": data_body,
-#                 "is_json": False,
-#             }
-#         }
-
-#     return {}
-
-
 def _extract_context(obj=None):
     """Resolve an Odoo context dict from self, env, request, or a raw dict."""
     if hasattr(obj, 'context'):
@@ -117,6 +85,7 @@ def get_body(obj=None):
     ctx = _extract_context(obj)
     if ctx:
         body = ctx.get('core_api_body')
+
         if body is None:
             return {}
         return ensure_dict(body)

@@ -4,7 +4,7 @@ import json
 import logging
 import re
 
-from werkzeug.exceptions import BadRequest, NotFound
+from werkzeug.exceptions import BadRequest, Forbidden, NotFound
 
 from odoo import _, api, fields, models
 from odoo.exceptions import AccessError, ValidationError
@@ -19,10 +19,12 @@ from odoo.addons.t4_coreapi.utils.response import (
     make_json_response,
     normalize_gateway_response,
 )
+from odoo.addons.t4_coreapi.utils.routing import build_gateway_path
 
 _logger = logging.getLogger(__name__)
 
-_ROUTE_PATTERN_RE = re.compile(r'^/api/([^/]+)(?:/(.*))?$')
+_LEGACY_API_ROUTE_RE = re.compile(r'^/api/([^/]+)(?:/(.*))?$')
+_GATEWAY_ROUTE_RE = re.compile(r'^/([^/]+)/([^/]+)(?:/(.*))?$')
 
 
 class CoreApiEndpoint(models.Model):
@@ -46,14 +48,19 @@ class CoreApiEndpoint(models.Model):
     route_suffix = fields.Char(
         string='Route Path',
         required=True,
-        help='Path after the version prefix, e.g. orders or orders/create.',
+        help='Path after the version segment, e.g. gate1 in /gk/v1/gate1.',
     )
     route_pattern = fields.Char(
-        string='Full Gateway URL',
+        string='Gateway Path',
         compute='_compute_route_pattern',
         store=True,
         readonly=True,
-        help='Computed public route, e.g. /api/v1/orders.',
+        help='Computed path segment, e.g. /gk/v1/gate1.',
+    )
+    public_gateway_url = fields.Char(
+        string='Full Gateway URL',
+        compute='_compute_public_gateway_url',
+        help='Full public URL including host domain, e.g. https://localhost:8069/gk/v1/gate1.',
     )
     http_methods = fields.Char(
         string='Allowed Methods',
@@ -61,12 +68,13 @@ class CoreApiEndpoint(models.Model):
         help='Comma-separated HTTP methods applications may use.',
     )
     action_id = fields.Many2one(
-        'ir.actions.server',
+        # 'ir.actions.server',
+        'ir.actions.core_api',
         string='Server Action',
         help='Executed after auth check. Use env.context core_api_* keys in the action.',
     )
     description = fields.Text(translate=True)
-    active = fields.Boolean(default=True)
+    route_active = fields.Boolean(string='Active', default=True)
     application_id = fields.Many2one(
         'core.api.application',
         string='Application',
@@ -89,13 +97,39 @@ class CoreApiEndpoint(models.Model):
         'Route path must be unique per application and API version.',
     )
 
-    @api.depends('version_id.path_prefix', 'route_suffix')
+    @api.depends(
+        'application_id.service_code',
+        'version_id.code',
+        'route_suffix',
+    )
     def _compute_route_pattern(self):
-        """Build the full public URL from version prefix and route suffix."""
+        """Build the full public URL from service code, version, and route suffix."""
         for endpoint in self:
-            prefix = (endpoint.version_id.path_prefix or '/api').rstrip('/')
-            suffix = (endpoint.route_suffix or '').strip().strip('/')
-            endpoint.route_pattern = f'{prefix}/{suffix}' if suffix else prefix
+            service_code = endpoint.application_id.service_code if endpoint.application_id else False
+            version_code = endpoint.version_id.code if endpoint.version_id else False
+            endpoint.route_pattern = build_gateway_path(
+                service_code,
+                version_code,
+                endpoint.route_suffix,
+            )
+
+    @api.depends(
+        'route_pattern',
+        'application_id.domain_id.base_url',
+    )
+    def _compute_public_gateway_url(self):
+        """Build the full public URL using the application host domain."""
+        web_base = (
+            self.env['ir.config_parameter'].sudo().get_param('web.base.url') or ''
+        ).rstrip('/')
+        for endpoint in self:
+            base = web_base
+            if endpoint.application_id and endpoint.application_id.domain_id:
+                domain_base = (endpoint.application_id.domain_id.base_url or '').rstrip('/')
+                if domain_base:
+                    base = domain_base
+            path = (endpoint.route_pattern or '').strip()
+            endpoint.public_gateway_url = f'{base}{path}' if path else base
 
     @api.constrains('version_tab_id', 'application_id', 'version_id')
     def _check_version_tab(self):
@@ -111,19 +145,6 @@ class CoreApiEndpoint(models.Model):
             if tab.version_id != endpoint.version_id:
                 raise ValidationError(_(
                     'Route tab API version does not match the route API version.'
-                ))
-
-    @api.constrains('application_id', 'version_id')
-    def _check_version_domain(self):
-        """Ensure the route version belongs to the application's host domain."""
-        for endpoint in self:
-            if not endpoint.application_id or not endpoint.version_id:
-                continue
-            if endpoint.version_id.domain_id != endpoint.application_id.domain_id:
-                raise ValidationError(_(
-                    'API version "%(version)s" does not belong to host domain "%(domain)s".',
-                    version=endpoint.version_id.display_name,
-                    domain=endpoint.application_id.domain_id.display_name,
                 ))
 
     @api.constrains('application_id')
@@ -153,19 +174,11 @@ class CoreApiEndpoint(models.Model):
                 return version.id
 
         version_code = self.env.context.get('default_version_code')
-        if not version_code:
-            return False
-
-        domain = [('code', '=', version_code), ('active', '=', True)]
-        default_domain_id = self.env.context.get('default_domain_id')
-        if default_domain_id:
-            domain.append(('domain_id', '=', default_domain_id))
-        elif application_id:
-            app = self.env['core.api.application'].browse(application_id)
-            if app.domain_id:
-                domain.append(('domain_id', '=', app.domain_id.id))
-        version = Version.search(domain, limit=1)
-        return version.id if version else False
+        if version_code:
+            version = Version.search([('code', '=', version_code), ('active', '=', True)], limit=1)
+            if version:
+                return version.id
+        return False
 
     @api.model
     def _assign_version_tab(self, vals):
@@ -217,6 +230,9 @@ class CoreApiEndpoint(models.Model):
                 default_app = self.env.context.get('default_application_id')
                 if default_app:
                     vals['application_id'] = default_app
+            default_version_id = self.env.context.get('default_version_id')
+            if default_version_id:
+                vals['version_id'] = default_version_id
             vals = self._assign_version_tab(vals)
             if not vals.get('version_id'):
                 version_id = self._version_id_from_context(
@@ -225,11 +241,6 @@ class CoreApiEndpoint(models.Model):
                 if version_id:
                     vals['version_id'] = version_id
                     vals = self._assign_version_tab(vals)
-                elif not vals.get('version_id'):
-                    default_version = self.env['core.api.version'].get_default_version()
-                    if default_version:
-                        vals['version_id'] = default_version.id
-                        vals = self._assign_version_tab(vals)
             prepared.append(vals)
         return super().create(prepared)
 
@@ -274,14 +285,18 @@ class CoreApiEndpoint(models.Model):
             version = default_version
             suffix = ''
 
-            match = _ROUTE_PATTERN_RE.match(pattern)
-            if match:
-                version = Version.search([('code', '=', match.group(1))], limit=1) or default_version
-                suffix = self._normalize_route_suffix(match.group(2))
+            legacy = _LEGACY_API_ROUTE_RE.match(pattern)
+            gateway = _GATEWAY_ROUTE_RE.match(pattern)
+            if legacy:
+                version = Version.search([('code', '=', legacy.group(1))], limit=1) or default_version
+                suffix = self._normalize_route_suffix(legacy.group(2))
+            elif gateway:
+                version = Version.search([('code', '=', gateway.group(2))], limit=1) or default_version
+                suffix = self._normalize_route_suffix(gateway.group(3))
             elif pattern.startswith('/api/'):
                 suffix = self._normalize_route_suffix(pattern[5:])
             else:
-                suffix = self._normalize_route_suffix(pattern)
+                suffix = self._normalize_route_suffix(pattern.lstrip('/'))
 
             endpoint = self.browse(endpoint_id)
             if not suffix:
@@ -305,23 +320,38 @@ class CoreApiEndpoint(models.Model):
         return not allowed or (method or '').upper() in allowed
 
     @api.model
-    def find_for_request(self, path, method, application=None):
-        """Find the best matching active route for path, method, and application."""
+    def _endpoint_matches_request(self, endpoint, path, method):
+        """Return True when the route pattern and HTTP method match the request."""
         normalized = (path or '').split('?')[0].rstrip('/') or '/'
         method = (method or 'GET').upper()
-        domain = [('active', '=', True), ('version_id.active', '=', True)]
-        if application:
-            domain.append(('application_id', '=', application.id))
+        pattern = (endpoint.route_pattern or '').rstrip('/') or '/'
+        if normalized != pattern and not normalized.startswith(f'{pattern}/'):
+            return False
+        return endpoint.allows_method(method)
+
+    @api.model
+    def find_for_request(self, path, method, application=None):
+        """Find the best matching active route for path, method, and application."""
+        method = (method or 'GET').upper()
+        app_domain = [('application_id', '=', application.id)] if application else []
+        version_domain = [('version_id.active', '=', True)]
+
+        inactive = self.sudo().search(
+            version_domain + app_domain + [('route_active', '=', False)],
+        )
+        for endpoint in inactive:
+            if self._endpoint_matches_request(endpoint, path, method):
+                return endpoint, 'inactive'
+
         candidates = []
-        for endpoint in self.sudo().search(domain):
-            pattern = (endpoint.route_pattern or '').rstrip('/') or '/'
-            if normalized == pattern or normalized.startswith(f'{pattern}/'):
-                if endpoint.allows_method(method):
-                    candidates.append((len(pattern), endpoint))
+        for endpoint in self.sudo().search(version_domain + app_domain + [('route_active', '=', True)]):
+            if self._endpoint_matches_request(endpoint, path, method):
+                pattern = (endpoint.route_pattern or '').rstrip('/') or '/'
+                candidates.append((len(pattern), endpoint))
         if not candidates:
-            return self.browse()
+            return self.browse(), 'missing'
         candidates.sort(key=lambda item: item[0], reverse=True)
-        return candidates[0][1]
+        return candidates[0][1], 'ok'
 
     def _parse_request_body(self, httprequest):
         """Parse JSON body from the incoming HTTP request."""
@@ -387,6 +417,8 @@ class CoreApiEndpoint(models.Model):
         """Validate access and run this route for the authenticated application."""
         self.ensure_one()
         try:
+            if not self.route_active:
+                raise AccessError(_('Gateway route "%s" is inactive.', self.name))
             if application:
                 if self.application_id != application:
                     raise AccessError(_(
@@ -401,14 +433,26 @@ class CoreApiEndpoint(models.Model):
             return self._error_response(e.description or str(e), 400)
         except ValidationError as e:
             return self._error_response(str(e), 400)
-
+        except AccessError as e:
+            return self._error_response(str(e), 403)
+        except ValueError as e:
+            _logger.exception('Core API server action failed on route %s', self.route_pattern)
+            message = str(e)
+            if 'while evaluating' in message:
+                message = message.split('while evaluating', 1)[0].strip().strip("'")
+            return self._error_response(message or 'Server action failed.', 500)
+        except Exception as e:
+            _logger.exception('Core API route %s failed', self.route_pattern)
+            return self._error_response(str(e) or 'Internal server error.', 500)
 
     @api.model
     def dispatch_request(self, path, application):
         """Entry point from the HTTP gateway controller."""
-        endpoint = self.find_for_request(
+        endpoint, status = self.find_for_request(
             path, request.httprequest.method, application=application,
         )
+        if status == 'inactive':
+            raise Forbidden(_('This gateway route is inactive.'))
         if not endpoint:
             raise NotFound(f'No gateway route configured for: {path}.')
         return endpoint.dispatch(application)

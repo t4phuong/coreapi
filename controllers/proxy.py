@@ -3,15 +3,13 @@ import logging
 
 from werkzeug.exceptions import NotFound
 
-from odoo import http
+from odoo import _, http
+from odoo.exceptions import AccessError
 from odoo.http import request
 
 from odoo.addons.t4_coreapi.controllers.base import CoreApiController
-# from odoo.addons.t4_coreapi.utils import (
-#     log_core_api,
-#     get_context,
-# )
 from odoo.addons.t4_coreapi.utils import log_core_api
+from odoo.addons.t4_coreapi.utils.routing import build_gateway_path
 
 _logger = logging.getLogger(__name__)
 
@@ -20,7 +18,7 @@ class CoreApiProxyController(CoreApiController):
     """HTTP gateway: validate token, then run the matching server action."""
 
     @http.route(
-        '/api/<path:subpath>',
+        '/<string:service_code>/<path:subpath>',
         type='http',
         auth='core_api',
         methods=['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
@@ -28,26 +26,24 @@ class CoreApiProxyController(CoreApiController):
         save_session=False,
     )
     @log_core_api('api')
-    def gateway(self, subpath, **kw):
-        """Handle all /api/* routes for authenticated applications."""
+    def gateway(self, service_code, subpath, **kw):
+        """Handle gateway routes: /{service_code}/{version}/{route_suffix}."""
         Version = request.env['core.api.version'].sudo()
-        version, rest = Version.resolve_from_api_subpath(subpath)
+        version, rest = Version.resolve_from_gateway_subpath(subpath)
         if not version:
             raise NotFound('Unknown or inactive API route.')
 
-        if rest == 'auth/token' or rest.startswith('auth/token/'):
-            raise NotFound('Use POST on the dedicated auth endpoint for token requests.')
+        if (service_code or '').strip().lower() == 'auth':
+            raise NotFound('Use POST /auth/token for token requests.')
 
-        path = f'{version.path_prefix.rstrip("/")}/{rest}'.rstrip('/') if rest else version.path_prefix.rstrip('/')
         application = self._get_application()
+        app_service = (application.service_code or '').strip()
+        if app_service != (service_code or '').strip():
+            raise AccessError(_(
+                'Application "%(app)s" is not registered for service code "%(code)s".',
+                app=application.name,
+                code=service_code,
+            ))
 
-        # ctx = get_context(
-        #     kw,
-        #     request.httprequest.get_data(),
-        # )
-
-        # return request.env['core.api.endpoint'].with_context(
-        #     **ctx,
-        # ).dispatch_request(path, application)
-
+        path = build_gateway_path(service_code, version.code, rest).rstrip('/')
         return request.env['core.api.endpoint'].dispatch_request(path, application)

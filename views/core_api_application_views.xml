@@ -9,6 +9,7 @@
                 <field name="name"/>
                 <field name="client_id"/>
                 <field name="domain_id"/>
+                <field name="service_code"/>
                 <filter string="Active" name="filter_active" domain="[('state', '=', 'active')]"/>
                 <filter string="Inactive" name="filter_inactive" domain="[('state', '=', 'inactive')]"/>
             </search>
@@ -22,13 +23,18 @@
             <list>
                 <field name="name"/>
                 <field name="domain_id"/>
+                <field name="service_code"/>
                 <field name="client_id"/>
                 <field name="state" widget="badge"
                        decoration-success="state == 'active'"
                        decoration-muted="state == 'inactive'"/>
-                <field name="token_count"/>
-                <field name="token_expiration"/>
-                <field name="last_auth_at"/>
+                <field name="traffic_status" widget="badge"
+                       decoration-success="traffic_status == 'normal'"
+                       decoration-warning="traffic_status == 'elevated'"
+                       decoration-danger="traffic_status == 'suspicious'"/>
+                <field name="api_requests_per_minute"/>
+                <field name="rate_limit_per_minute" optional="hide"/>
+                <field name="has_active_token" column_invisible="1"/>
             </list>
         </field>
     </record>
@@ -57,9 +63,9 @@
                             invisible="not id"
                             groups="t4_coreapi.group_core_api_manager"/>
                     <button name="action_revoke_token" type="object"
-                            string="Revoke Token"
+                            string="Revoke Active Token"
                             class="btn-warning"
-                            invisible="not active_token_id"
+                            invisible="not has_active_token"
                             groups="t4_coreapi.group_core_api_manager"/>
                     <field name="state" widget="statusbar"
                            statusbar_visible="active,inactive"
@@ -68,9 +74,16 @@
                 <sheet>
                     <widget name="web_ribbon" title="Inactive" bg_color="text-bg-danger"
                             invisible="state == 'active'"/>
+                    <widget name="web_ribbon" title="Suspicious Traffic" bg_color="text-bg-warning"
+                            invisible="traffic_status != 'suspicious'"/>
                     <div class="alert alert-info" role="alert" invisible="id">
                         Client ID and Client Secret are generated automatically when you save.
                         A popup will appear so you can copy them once.
+                    </div>
+                    <div class="alert alert-warning mb-3" role="alert"
+                         invisible="traffic_status != 'suspicious'">
+                        Request rate exceeded the configured limit. The active token may be revoked
+                        automatically, or you can revoke it manually.
                     </div>
                     <div class="oe_button_box" name="button_box">
                         <button name="action_view_tokens" type="object" class="oe_stat_button" icon="fa-key"
@@ -86,84 +99,47 @@
                         <group>
                             <field name="name"/>
                             <field name="domain_id" options="{'no_create': True}"/>
-                            <field name="default_version_id"
-                                   domain="[('domain_id', '=', domain_id), ('active', '=', True)]"/>
+                            <field name="service_code" placeholder="gk"/>
                             <field name="client_id" readonly="1" invisible="not client_id"/>
                             <field name="token_ttl_hours"/>
                             <field name="refresh_token_ttl_hours"/>
                         </group>
-                        <group string="Token Status">
-                            <field name="active_token_id" readonly="1"/>
-                            <field name="token_expiration"/>
-                            <field name="last_auth_at"/>
-                            <field name="last_auth_ip"/>
+                        <group string="Application Status">
+                            <field name="traffic_status" widget="badge"
+                                   decoration-success="traffic_status == 'normal'"
+                                   decoration-warning="traffic_status == 'elevated'"
+                                   decoration-danger="traffic_status == 'suspicious'"/>
+                            <label for="api_requests_per_minute" string="API Requests (last min)"/>
+                            <div class="o_row">
+                                <field name="api_requests_per_minute" readonly="1" nolabel="1"/>
+                                <span class="mx-1 text-muted">/</span>
+                                <field name="rate_limit_per_minute" readonly="1" nolabel="1"/>
+                            </div>
+                            <label for="auth_requests_per_minute" string="Auth Requests (last min)"/>
+                            <div class="o_row">
+                                <field name="auth_requests_per_minute" readonly="1" nolabel="1"/>
+                                <span class="mx-1 text-muted">/</span>
+                                <field name="auth_rate_limit_per_minute" readonly="1" nolabel="1"/>
+                            </div>
+                            <field name="has_active_token" invisible="1"/>
+                            <field name="active_token_id" invisible="1"/>
                             <field name="credentials_pending" invisible="1"/>
                             <field name="active" invisible="1"/>
                         </group>
                     </group>
 
                     <notebook>
-                        <field name="domain_version_count" invisible="1"/>
+                        <field name="api_version_count" invisible="1"/>
                         <page string="API Routes" name="gateway_routes_empty"
-                              invisible="domain_version_count != 0">
+                              invisible="api_version_count != 0">
                             <field name="version_tab_ids" invisible="1"/>
                             <div class="alert alert-warning mb-0" role="alert">
-                                This host domain has no API versions.
-                                Create versions on the <strong>Host Domain</strong> record.
+                                No active API versions exist yet.
+                                Create them under Configuration → API Versions.
                             </div>
                         </page>
-                        <page string="All Routes" name="gateway_routes_all">
-                            <field name="endpoint_ids" nolabel="1"
-                                   context="{
-                                       'default_application_id': id,
-                                       'default_domain_id': domain_id,
-                                       'default_version_id': default_version_id,
-                                   }">
-                                <list editable="bottom" default_group_by="version_id">
-                                    <field name="application_id" column_invisible="1"/>
-                                    <field name="version_id"
-                                           domain="[('domain_id', '=', parent.domain_id), ('active', '=', True)]"/>
-                                    <field name="name"/>
-                                    <field name="code"/>
-                                    <field name="route_suffix"/>
-                                    <field name="route_pattern" readonly="1"/>
-                                    <field name="http_methods"/>
-                                    <field name="action_id"
-                                           can_create="0"
-                                           options="{'no_create': True, 'no_quick_create': True, 'no_create_edit': True}"
-                                           context="{
-                                               'list_view_ref': 't4_coreapi.view_ir_actions_server_core_api_picker_list',
-                                           }"/>
-                                    <field name="active"/>
-                                </list>
-                                <form string="Gateway Route">
-                                    <field name="application_id" required="1" invisible="1"/>
-                                    <group>
-                                        <group string="Gateway (public)">
-                                            <field name="version_id"
-                                                   domain="[('domain_id', '=', parent.domain_id), ('active', '=', True)]"/>
-                                            <field name="name"/>
-                                            <field name="code"/>
-                                            <field name="route_suffix" placeholder="orders"/>
-                                            <field name="route_pattern" readonly="1"/>
-                                            <field name="http_methods" placeholder="GET,POST"/>
-                                            <field name="active"/>
-                                        </group>
-                                        <group string="Handler">
-                                            <field name="action_id"
-                                                   can_create="0"
-                                                   options="{'no_create': True, 'no_quick_create': True, 'no_create_edit': True, 'no_open': True}"
-                                                   context="{
-                                                       'create': False,
-                                                       'edit': False,
-                                                       'delete': False,
-                                                       'list_view_ref': 't4_coreapi.view_ir_actions_server_core_api_picker_list',
-                                                   }"/>
-                                        </group>
-                                    </group>
-                                    <field name="description" placeholder="What this route is for…"/>
-                                </form>
-                            </field>
+                        <page string="Route Tabs" name="gateway_routes_anchor" invisible="1">
+                            <field name="version_tab_ids" invisible="1"/>
                         </page>
 
                         <page string="Authentication Guide" name="auth_guide" invisible="not client_id">
@@ -190,7 +166,7 @@
                                 <group string="Step 2: Call a Gateway Route">
                                     <div colspan="2" class="text-muted">
                                         Replace <code>&lt;access_token&gt;</code> with the token from step 1.
-                                        The sample URL uses your first configured route (or a placeholder).
+                                        Example URL pattern: <code>/{service_code}/{version}/{route}</code>
                                     </div>
                                     <label for="api_call_curl_example" string="Example request"/>
                                     <div class="o_row">
@@ -228,7 +204,7 @@
 
                         <page string="Security" name="security">
                             <group>
-                                <group>
+                                <group string="Rate Limits">
                                     <field name="rate_limit_per_minute"/>
                                     <field name="auth_rate_limit_per_minute"/>
                                 </group>
@@ -243,7 +219,7 @@
                         <field name="notes" placeholder="Internal notes…" nolabel="1" colspan="2"/>
                     </group>
                 </sheet>
-                <chatter/>
+                <!-- <chatter/> -->
             </form>
         </field>
     </record>
