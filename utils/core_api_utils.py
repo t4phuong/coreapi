@@ -61,7 +61,7 @@ def get_params(obj=None):
         return dict(request.httprequest.args) if request else {}
 
     ctx = _extract_context(obj)
-    return ctx.get('params', {})
+    return ctx.get('core_api_params', {})
    
 
 
@@ -84,11 +84,8 @@ def get_body(obj=None):
 
     ctx = _extract_context(obj)
     if ctx:
-        _logger.warning(f"here {str(ctx)}")
+        body = ctx.get('core_api_body')
 
-        body = ctx.get('body')
-
-        _logger.warning (f"body: {str(body)}")
         if body is None:
             return {}
         return ensure_dict(body)

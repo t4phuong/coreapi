@@ -219,7 +219,7 @@
                         <field name="notes" placeholder="Internal notes…" nolabel="1" colspan="2"/>
                     </group>
                 </sheet>
-                <chatter/>
+                <!-- <chatter/> -->
             </form>
         </field>
     </record>
