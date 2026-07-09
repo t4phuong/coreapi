@@ -70,7 +70,7 @@ class CoreApiEndpoint(models.Model):
     action_id = fields.Many2one(
         # 'ir.actions.server',
         'ir.actions.core_api',
-        string='Server Action',
+        string='API Action',
         help='Executed after auth check. Use env.context core_api_* keys in the action.',
     )
     description = fields.Text(translate=True)
