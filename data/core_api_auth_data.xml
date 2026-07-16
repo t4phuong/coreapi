@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="0">
+
+        <!-- Default Auth Service (Public) -->
+        <record id="service_auth_default" model="t4.coreapi.service">
+            <field name="name">Authentication Service</field>
+            <field name="code">auth</field>
+            <field name="privacy">public</field>
+        </record>
+
+        <!-- Default Auth Version -->
+        <record id="version_auth_v1" model="t4.coreapi.version">
+            <field name="name">v1</field>
+            <field name="service_id" ref="service_auth_default"/>
+        </record>
+
+        <!-- Default Login Action -->
+        <record id="action_t4_coreapi_default_login" model="t4.coreapi.action">
+            <field name="name">Default Auth: Login</field>
+            <field name="model_id" search="[('model', '=', 't4.coreapi.auth')]"/>
+            <field name="code"><![CDATA[model.action_login()]]></field>
+        </record>
+
+        <!-- Default Login Route -->
+        <record id="route_auth_login" model="t4.coreapi.route">
+            <field name="version_id" ref="version_auth_v1"/>
+            <field name="route_path">/login</field>
+            <field name="allow_method">POST</field>
+            <field name="api_action_id" ref="action_t4_coreapi_default_login"/>
+        </record>
+
+        <!-- Default Auth Middleware Action (Auto-injected into Private Services) -->
+        <record id="action_t4_coreapi_default_auth_middleware" model="t4.coreapi.action">
+            <field name="name">Default Auth: Auth Middleware (AuthN &amp; AuthZ)</field>
+            <field name="model_id" search="[('model', '=', 't4.coreapi.auth')]"/>
+            <field name="code"><![CDATA[model.action_auth_middleware()]]></field>
+        </record>
+
+    </data>
+</odoo>

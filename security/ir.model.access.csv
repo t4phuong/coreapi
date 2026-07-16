@@ -7,3 +7,4 @@ access_t4_coreapi_required_action,t4.coreapi.required.action,model_t4_coreapi_re
 access_t4_coreapi_route,t4.coreapi.route,model_t4_coreapi_route,base.group_user,1,1,1,1
 access_t4_coreapi_role,t4.coreapi.role,model_t4_coreapi_role,base.group_system,1,1,1,1
 access_t4_coreapi_rate_limit_log,t4.coreapi.rate.limit.log,model_t4_coreapi_rate_limit_log,base.group_system,1,1,1,1
+access_t4_coreapi_client,t4.coreapi.client,model_t4_coreapi_client,base.group_system,1,1,1,1

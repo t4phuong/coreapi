@@ -33,15 +33,16 @@ class CoreApiVersion(models.Model):
         for record in self:
             record.total_routes = len(record.route_ids)
 
-    route = fields.Char (
-        compute='_compute_route',
+    version_code = fields.Char (
+        string='Version Code',
+        compute='_compute_version_code',
         store=True
     )
 
     @api.depends('service_id', 'name')
-    def _compute_route(self):
+    def _compute_version_code(self):
         for record in self:
-            record.route = f"{record.service_id.code}/{record.name}"
+            record.version_code = f"{record.service_id.code}/{record.name}"
 
     _unique_version_per_service = models.Constraint(
         'UNIQUE(name, service_id)',

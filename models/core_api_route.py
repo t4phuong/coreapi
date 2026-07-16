@@ -5,8 +5,9 @@ from odoo import models, fields, api
 class CoreApiRoute(models.Model):
     _name = 't4.coreapi.route'
     _description = 'Core API Route'
+    _rec_name = 'route_path'
 
-    name = fields.Char(string='Route', required=True, default='/')
+    route_path = fields.Char(string='Route Path', required=True, default='/')
     
     allow_method = fields.Selection([
         ('GET', 'GET'),
@@ -22,12 +23,7 @@ class CoreApiRoute(models.Model):
         required=True,
         ondelete='cascade')
 
-    auth_type = fields.Selection([
-        ('public', 'Public'),
-        ('protected', 'Protected')
-    ], string='Auth Type', default='public', required=True)
-
-    role_ids = fields.Many2many(
+    role_id = fields.Many2one(
         't4.coreapi.role',
         string='Allowed Roles',
         help="Roles allowed to access this route when Auth Type is Protected."
@@ -39,21 +35,22 @@ class CoreApiRoute(models.Model):
         ondelete='cascade'
     )
 
-    full_route = fields.Char (
-        string='Full Route',
-        compute="_compute_full_route",
+    display_route = fields.Char (
+        string='Display Route',
+        compute="_compute_display_route",
         store=True,
     )
 
-    @api.depends("version_id", "name")
-    def _compute_full_route(self):
+    @api.depends("version_id", "route_path")
+    def _compute_display_route(self):
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url', 'http://localhost:8069')
         for record in self:
             version = record.version_id
-            record.full_route = f"{version.route}{record.name}"
+            record.display_route = f"{base_url}/api/{version.version_code}{record.route_path}"
 
     _unique_route_per_version = models.Constraint(
-        'UNIQUE(name, version_id)',
-        'The route must be unique per version!'
+        'UNIQUE(route_path, version_id)',
+        'The route path must be unique per version!'
     )
 
     ###### CRUD ######
@@ -64,11 +61,11 @@ class CoreApiRoute(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         for vals in vals_list:
-            if vals.get("name"):
-                vals["name"] = "/" + self._normalize_route(vals["name"])
+            if vals.get("route_path"):
+                vals["route_path"] = "/" + self._normalize_route(vals["route_path"])
         return super().create(vals_list)
     
     def write(self, vals):
-        if vals.get("name"):
-            vals["name"] = "/" + self._normalize_route(vals["name"])
+        if vals.get("route_path"):
+            vals["route_path"] = "/" + self._normalize_route(vals["route_path"])
         return super().write(vals)

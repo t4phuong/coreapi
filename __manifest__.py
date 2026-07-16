@@ -18,9 +18,12 @@
     'data': [
         'security/ir.model.access.csv',
         'data/ir_cron_data.xml',
-        'views/core_api_action_views.xml',
+        'data/core_api_auth_data.xml',
         'views/core_api_service_views.xml',
         'views/core_api_version_views.xml',
+        # 'views/core_api_route_views.xml',
+        'views/core_api_action_views.xml',
+        'views/core_api_client_views.xml',
         'views/core_api_menu.xml',
     ],
 
@@ -30,4 +33,3 @@
 
     'license': 'LGPL-3',
 }
-

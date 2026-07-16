@@ -19,11 +19,10 @@
                         <page string="Routes">
                             <field name="route_ids">
                                 <list editable="bottom">
-                                    <field name="name"/>
-                                    <field name="full_route"/>
+                                    <field name="route_path"/>
+                                    <field name="display_route" widget="CopyClipboardChar" optional="show"/>
                                     <field name="allow_method"/>
-                                    <field name="auth_type"/>
-                                    <field name="role_ids" widget="many2many_tags" invisible="auth_type == 'public'"/>
+                                    <field name="role_id"/>
                                     <field name="api_action_id"/>
                                 </list>
                             </field>

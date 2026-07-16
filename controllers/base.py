@@ -14,8 +14,8 @@ class CoreApiController(http.Controller):
             "version": version,
             "subpath": subpath,
             "method": request.httprequest.method,
-            "version_route": f"{service_code}/{version}",
-            "full_route": f"{service_code}/{version}/{subpath}",
+            "version_code": f"{service_code}/{version}",
+            "route_path": f"/{subpath}",
         }
 
         return CoreApiDispatcher()

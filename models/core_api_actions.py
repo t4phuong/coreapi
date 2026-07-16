@@ -4,6 +4,7 @@ from odoo import models, fields, api, _
 # pyrefly: ignore [missing-import]
 from odoo.tools.safe_eval import safe_eval
 
+
 _logger = logging.getLogger(__name__)
 
 class ActionEndpointManager(models.Model):
@@ -33,7 +34,7 @@ class ActionEndpointManager(models.Model):
             if hasattr(func, '_is_endpoint'):
                 action_name = getattr(func, '_endpoint_name')
 
-                code_body = f"model.{method_name}()"
+                code_body = f"result = model.{method_name}()"
 
                 existing_action = CAaction.search([
                     ('endpoint_manager_id', '=', self.id),
@@ -101,7 +102,10 @@ class IrActionsCoreApi(models.Model):
         eval_context = {
             "env": self.env,
             "model": model,
+            "result": None,
             **self.env.context
         }
 
         safe_eval(self.code.strip(), eval_context, mode="exec")
+        
+        return eval_context.get('result')

@@ -6,7 +6,6 @@ class CoreApiRole(models.Model):
     _description = 'Core API Role'
 
     name = fields.Char(string='Name', required=True)
-    code = fields.Char(string='Role Code', required=True)
     
     service_id = fields.Many2one(
         't4.coreapi.service', 
@@ -14,8 +13,17 @@ class CoreApiRole(models.Model):
         required=True,
         ondelete='cascade')
 
+    implied_ids = fields.Many2many(
+        't4.coreapi.role',
+        't4_coreapi_role_implied_rel',
+        'role_id',
+        'implied_id',
+        string='Implies',
+        help="Roles automatically granted to users with this role."
+    )
+
     _sql_constraints = [
-        ('unique_code_per_service', 'UNIQUE(code, service_id)', 'Role code must be unique per service!')
+        ('unique_name_per_service', 'UNIQUE(name, service_id)', 'Role name must be unique per service!')
     ]
 
 class CoreApiRateLimitLog(models.Model):
@@ -27,6 +35,12 @@ class CoreApiRateLimitLog(models.Model):
         't4.coreapi.service', 
         string='Service',
         required=True,
+        ondelete='cascade',
+        index=True)
+
+    client_id = fields.Many2one(
+        't4.coreapi.client',
+        string='Client',
         ondelete='cascade',
         index=True)
     
