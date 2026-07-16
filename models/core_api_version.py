@@ -47,10 +47,3 @@ class CoreApiVersion(models.Model):
         'UNIQUE(name, service_id)',
         'Version name must be unique per service!'
     )
-
-    #### CRUD
-    @api.model
-    def _match_routes(self, route):
-        return self.search([
-            ('route', '=', route),
-        ], limit=1)

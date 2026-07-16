@@ -62,11 +62,3 @@ class CoreApiRoute(models.Model):
         if vals.get("name"):
             vals["name"] = "/" + self._normalize_route(vals["name"])
         return super().write(vals)
-
-    ##### Route Finding #####
-    @api.model
-    def _match_routes(self, request_route):
-        return self.search([
-            ('full_route', '=', request_route),
-        ], limit=1)
-        
