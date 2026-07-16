@@ -82,8 +82,7 @@ class IrActionsCoreApi(models.Model):
     endpoint_manager_id = fields.Many2one(
         't4.coreapi.action.manager', 
         string='Endpoint Manager', 
-        ondelete='cascade'
-    )
+        ondelete='cascade')
 
     model_id = fields.Many2one(
         'ir.model', 
@@ -92,8 +91,7 @@ class IrActionsCoreApi(models.Model):
 
     code = fields.Text(
         string='Python Code', 
-        required=True
-    )
+        required=True)
 
     @api.model
     def run(self):

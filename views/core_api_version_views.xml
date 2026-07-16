@@ -22,6 +22,8 @@
                                     <field name="name"/>
                                     <field name="full_route"/>
                                     <field name="allow_method"/>
+                                    <field name="auth_type"/>
+                                    <field name="role_ids" widget="many2many_tags" invisible="auth_type == 'public'"/>
                                     <field name="api_action_id"/>
                                 </list>
                             </field>

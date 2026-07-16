@@ -17,6 +17,7 @@
 
     'data': [
         'security/ir.model.access.csv',
+        'data/ir_cron_data.xml',
         'views/core_api_action_views.xml',
         'views/core_api_service_views.xml',
         'views/core_api_version_views.xml',

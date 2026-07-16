@@ -36,6 +36,25 @@ class CoreApiService(models.Model):
         string='Service Code', 
         required=True)
 
+    is_rate_limit_enabled = fields.Boolean(
+        string='Enable Rate Limit',
+        default=False)
+
+    rate_limit_calls = fields.Integer(
+        string='Max Calls',
+        default=100)
+
+    rate_limit_period = fields.Integer(
+        string='Period (Minutes)',
+        default=1,
+        help='Time window in minutes to check for max calls.')
+
+    role_ids = fields.One2many(
+        't4.coreapi.role',
+        'service_id',
+        string='Roles'
+    )
+
     version_ids = fields.One2many(
         't4.coreapi.version', 
         'service_id', 

@@ -24,8 +24,16 @@
                         </h1>
                     </div>
                     <group>
-                        <group>
+                        <group string="Information">
                             <field name="code"/>
+                        </group>
+                        <group string="Security">
+                            <field name="is_rate_limit_enabled" widget="boolean_toggle"/>
+                            <label for="rate_limit_calls" string="Limit (Calls/Period)" invisible="not is_rate_limit_enabled"/>
+                            <div class="o_row" invisible="not is_rate_limit_enabled">
+                                <field name="rate_limit_calls" class="oe_inline"/> / 
+                                <field name="rate_limit_period" class="oe_inline"/> minute(s)
+                            </div>
                         </group>
                     </group>
                     <notebook>
@@ -43,6 +51,14 @@
                                 <list editable="bottom">
                                     <field name="api_action_id"/>
                                     <field name="sequence"/>
+                                </list>
+                            </field>
+                        </page>
+                        <page string="Roles">
+                            <field name="role_ids">
+                                <list editable="bottom">
+                                    <field name="name"/>
+                                    <field name="code"/>
                                 </list>
                             </field>
                         </page>

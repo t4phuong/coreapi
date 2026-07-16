@@ -9,7 +9,11 @@ from odoo.addons.t4_coreapi.exceptions import (
     APIException,
     APINotFound,
     APIBadRequest,
+    APITooManyRequests,
 )
+
+from odoo import fields
+from dateutil.relativedelta import relativedelta
 
 import logging
 _logger = logging.getLogger(__name__)
@@ -45,8 +49,26 @@ class CoreApiDispatcher():
         return route   
 
     ############ Execution ############
+    def _check_rate_limit(self, service):
+        if not service.is_rate_limit_enabled:
+            return
+
+        time_limit = fields.Datetime.now() - relativedelta(minutes=service.rate_limit_period)
+        log_count = request.env['t4.coreapi.rate.limit.log'].sudo().search_count([
+            ('service_id', '=', service.id),
+            ('create_date', '>=', time_limit)
+        ])
+
+        if log_count >= service.rate_limit_calls:
+            raise APITooManyRequests("Rate limit exceeded.")
+
+        request.env['t4.coreapi.rate.limit.log'].sudo().create({
+            'service_id': service.id
+        })
+
     def _execute_required_action(self):
         service = self._find_service_by_code(request.service_info["service_code"])
+        self._check_rate_limit(service)
         
         req_actions = service.required_action_ids.sorted(
             lambda x: x.sequence

@@ -16,17 +16,27 @@ class CoreApiRoute(models.Model):
         ('DELETE', 'DELETE'),
     ], string='Allow Method', required=True, default='GET')
     
+    version_id = fields.Many2one(
+        't4.coreapi.version', 
+        string='Version', 
+        required=True,
+        ondelete='cascade')
+
+    auth_type = fields.Selection([
+        ('public', 'Public'),
+        ('protected', 'Protected')
+    ], string='Auth Type', default='public', required=True)
+
+    role_ids = fields.Many2many(
+        't4.coreapi.role',
+        string='Allowed Roles',
+        help="Roles allowed to access this route when Auth Type is Protected."
+    )
+
     api_action_id = fields.Many2one(
         't4.coreapi.action', 
         string='API Action', 
         ondelete='cascade'
-    )
-
-    version_id = fields.Many2one(
-        't4.coreapi.version',
-        string='Version',
-        ondelete='cascade',
-        required=True
     )
 
     full_route = fields.Char (
