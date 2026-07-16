@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- t4.coreapi.action.manager views -->
+    <record id="view_t4_coreapi_action_manager_list" model="ir.ui.view">
+        <field name="name">t4.coreapi.action.manager.list</field>
+        <field name="model">t4.coreapi.action.manager</field>
+        <field name="arch" type="xml">
+            <list string="Action Managers">
+                <field name="name"/>
+                <field name="model_id"/>
+                <field name="create_date"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_t4_coreapi_action_manager_form" model="ir.ui.view">
+        <field name="name">t4.coreapi.action.manager.form</field>
+        <field name="model">t4.coreapi.action.manager</field>
+        <field name="arch" type="xml">
+            <form string="Action Manager">
+                <div>
+                    <h1>
+                        <field name="name"/>
+                    </h1>
+                </div>
+                <header>
+                    <button name="action_generate_core_api_action" 
+                            type="object" 
+                            string="Generate api actions" 
+                            class="oe_highlight" 
+                            icon="fa-refresh"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="model_id" options="{'no_create': True, 'no_open': True}"/>
+                        </group>
+                    </group>
+
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_t4_coreapi_action_manager" model="ir.actions.act_window">
+        <field name="name">Action Managers</field>
+        <field name="res_model">t4.coreapi.action.manager</field>
+        <field name="view_mode">list,form</field>
+    </record>
+
+    <!-- t4.coreapi.action views -->
+    <record id="view_t4_coreapi_action_list" model="ir.ui.view">
+        <field name="name">t4.coreapi.action.list</field>
+        <field name="model">t4.coreapi.action</field>
+        <field name="arch" type="xml">
+            <list string="API Actions">
+                <field name="name"/>
+                <field name="model_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_t4_coreapi_action_form" model="ir.ui.view">
+        <field name="name">t4.coreapi.action.form</field>
+        <field name="model">t4.coreapi.action</field>
+        <field name="arch" type="xml">
+            <form string="API Action">
+                <sheet>
+                    <div class="oe_title">
+                        <h1>
+                            <field name="name" placeholder="Name"/>
+                        </h1>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="model_id"/>
+                            <field name="type" invisible="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Code">
+                            <field name="code" widget="ace" options="{'mode': 'python'}"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_t4_coreapi_action" model="ir.actions.act_window">
+        <field name="name">API Actions</field>
+        <field name="res_model">t4.coreapi.action</field>
+        <field name="view_mode">list,form</field>
+    </record>
+</odoo>

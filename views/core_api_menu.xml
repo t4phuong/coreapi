@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Root Menu -->
+    <menuitem id="menu_t4_coreapi_root" name="T4 Core API" sequence="10"/>
+
+    <menuitem id="menu_t4_coreapi_services" name="Services" parent="menu_t4_coreapi_root" action="action_t4_coreapi_service" sequence="10"/>
+    <!-- <menuitem id="menu_t4_coreapi_versions" name="Versions" parent="menu_t4_coreapi_root" action="action_t4_coreapi_version" sequence="20"/> -->
+
+    <!-- Configuration Menu -->
+    <menuitem id="menu_t4_coreapi_configuration" name="Configuration" parent="menu_t4_coreapi_root" sequence="90"/>
+
+    <!-- Actions under Configuration -->
+    <menuitem id="menu_t4_coreapi_action_manager" name="Action Managers" parent="menu_t4_coreapi_configuration" action="action_t4_coreapi_action_manager" sequence="10"/>
+    <menuitem id="menu_t4_coreapi_action" name="API Actions" parent="menu_t4_coreapi_configuration" action="action_t4_coreapi_action" sequence="20"/>
+</odoo>

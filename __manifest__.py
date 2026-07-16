@@ -2,70 +2,11 @@
 
     'name': 'T4 Core API',
 
-    'version': '1.0.0',
+    'version': '2.0.0',
 
     'summary': 'Secure external API gateway with client credentials and token auth',
 
     'description': """
-
-T4 Core API
-
-===========
-
-OAuth2-style API gateway for external applications and branch controllers.
-
-
-
-**Application management**
-
-* Register external applications with Client ID / Client Secret (hashed)
-
-* Per-application allowed API catalog
-
-* Token issuance, expiry, and instant revoke
-
-
-
-**Authentication**
-
-* ``POST https://your-host/auth/token`` — global token endpoint (no service code or version)
-
-* Refresh tokens: ``grant_type=refresh_token`` returns a new access + refresh pair
-
-* ``auth='core_api'`` gatekeeper on protected routes (access token only)
-
-* ``@validate_core_api('code')`` decorator for fine-grained access control
-
-
-
-**Gateway routes**
-
-* After auth, linked **Server Actions** handle each route
-
-* Use ``record.set_api_response({...})`` in action code to return JSON
-
-
-
-**Extend in other modules**
-
-
-
-.. code-block:: python
-
-
-
-    from odoo.addons.t4_coreapi.utils.decorators import validate_core_api
-
-
-
-    @http.route('/gk/v1/my-route', auth='core_api', ...)
-
-    @validate_core_api('my_endpoint')
-
-    def my_route(self, **kw):
-
-        ...
-
     """,
 
     'category': 'Technical',
@@ -75,56 +16,12 @@ OAuth2-style API gateway for external applications and branch controllers.
     'depends': ['base', 'bus', 'mail'],
 
     'data': [
-
-        'security/groups.xml',
-
         'security/ir.model.access.csv',
-
-        'security/t4_coreapi_rules.xml',
-
-        'data/core_api_domain_data.xml',
-
-        'views/core_api_actions_views.xml',
-
-        'views/core_api_domain_views.xml',
-
+        'views/core_api_action_views.xml',
+        'views/core_api_service_views.xml',
         'views/core_api_version_views.xml',
-
-        'views/core_api_application_views.xml',
-
-        'views/core_api_endpoint_views.xml',
-
-        'views/core_api_token_views.xml',
-
-        'views/core_api_log_views.xml',
-
-        'views/core_api_action_endpoint_views.xml',
-
-        'views/menu_views.xml',
-
-        'wizard/core_api_application_secret_wizard_views.xml',
-
-        'data/core_api_version_data.xml',
-        'data/core_api_version_migrate.xml',
-        'data/core_api_domain_migrate.xml',
-        'data/core_api_application_migrate.xml',
-        'data/core_api_version_views_sync.xml',
-        'data/core_api_cron.xml',
-
-        'security/core_api_domain_access.xml',
-        'security/core_api_version_access.xml',
-
+        'views/core_api_menu.xml',
     ],
-
-    'pre_init_hook': 'pre_init_hook',
-
-    'post_init_hook': 'post_init_hook',
-
-    'assets': {
-        'web.assets_backend': [
-            't4_coreapi/static/src/services/**/*',
-        ],
-    },
 
     'installable': True,
 

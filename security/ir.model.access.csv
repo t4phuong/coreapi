@@ -1,9 +1,7 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_core_api_application_manager,core.api.application manager,model_core_api_application,t4_coreapi.group_core_api_manager,1,1,1,1
-access_core_api_application_version_tab_manager,core.api.application.version.tab manager,model_core_api_application_version_tab,t4_coreapi.group_core_api_manager,1,1,1,1
-access_core_api_endpoint_manager,core.api.endpoint manager,model_core_api_endpoint,t4_coreapi.group_core_api_manager,1,1,1,1
-access_core_api_token_manager,core.api.token manager,model_core_api_token,t4_coreapi.group_core_api_manager,1,1,1,1
-access_core_api_application_secret_wizard_manager,core.api.application.secret.wizard manager,model_core_api_application_secret_wizard,t4_coreapi.group_core_api_manager,1,1,1,1
-access_core_api_log_manager,core.api.log manager,model_core_api_log,t4_coreapi.group_core_api_manager,1,0,0,0
-access_core_api_action_endpoint_manager,action.endpoint.manager,model_action_endpoint_manager,base.group_user,1,1,1,1
-access_core_api_actions,ir.actions.core_api,model_ir_actions_core_api,base.group_user,1,1,1,1
+access_t4_coreapi_action_manager,t4.coreapi.action.manager,model_t4_coreapi_action_manager,base.group_user,1,1,1,1
+access_t4_coreapi_action,t4.coreapi.action,model_t4_coreapi_action,base.group_user,1,1,1,1
+access_t4_coreapi_service,t4.coreapi.service,model_t4_coreapi_service,base.group_user,1,1,1,1
+access_t4_coreapi_version,t4.coreapi.version,model_t4_coreapi_version,base.group_user,1,1,1,1
+access_t4_coreapi_required_action,t4.coreapi.required.action,model_t4_coreapi_required_action,base.group_user,1,1,1,1
+access_t4_coreapi_route,t4.coreapi.route,model_t4_coreapi_route,base.group_user,1,1,1,1

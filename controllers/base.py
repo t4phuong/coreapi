@@ -1,18 +1,21 @@
 # Part of T4 Core API. See LICENSE file for full copyright and licensing details.
 from odoo import http
+# pyrefly: ignore [missing-import]
 from odoo.http import request
-
+# pyrefly: ignore [missing-import]
+from odoo.addons.t4_coreapi.utils import CoreApiDispatcher
 
 class CoreApiController(http.Controller):
     """Base controller. Inherit when adding custom secured Core API endpoints."""
 
-    def _get_application(self):
-        """Return the authenticated application from request context."""
-        application_id = request.env.context.get('core_api_application_id')
-        if not application_id:
-            return request.env['core.api.application']
-        return request.env['core.api.application'].sudo().browse(application_id)
+    def _dispatcher(self, service_code, version, subpath):
+        request.service_info = {
+            "service_code": service_code,
+            "version": version,
+            "subpath": subpath,
+            "method": request.httprequest.method,
+            "version_route": f"{service_code}/{version}",
+            "full_route": f"{service_code}/{version}/{subpath}",
+        }
 
-    def _get_device(self):
-        """Backward-compatible alias for _get_application."""
-        return self._get_application()
+        return CoreApiDispatcher()
