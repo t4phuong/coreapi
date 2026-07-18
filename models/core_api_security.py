@@ -43,6 +43,12 @@ class CoreApiRateLimitLog(models.Model):
         string='Client',
         ondelete='cascade',
         index=True)
+        
+    session_id = fields.Many2one(
+        't4.coreapi.auth.session',
+        string='Session',
+        ondelete='cascade',
+        index=True)
     
     create_date = fields.Datetime(
         string='Created on', 

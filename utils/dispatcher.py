@@ -54,14 +54,18 @@ class CoreApiDispatcher:
         return route   
 
     ############ Execution ############
-    def _check_rate_limit(self, service, client=None):
+    def _check_rate_limit(self, service, client=None, session_id=None):
         if not service.is_rate_limit_enabled:
             return
 
         time_limit = fields.Datetime.now() - relativedelta(minutes=service.rate_limit_period)
         domain = [('service_id', '=', service.id), ('create_date', '>=', time_limit)]
         
-        if service.rate_limit_type == 'user':
+        if service.rate_limit_type == 'session':
+            if not session_id:
+                return
+            domain.append(('session_id', '=', session_id))
+        elif service.rate_limit_type == 'user':
             if not client:
                 return
             domain.append(('client_id', '=', client.id))
@@ -69,11 +73,16 @@ class CoreApiDispatcher:
         log_count = request.env['t4.coreapi.rate.limit.log'].sudo().search_count(domain)
 
         if log_count >= service.rate_limit_calls:
-            raise APITooManyRequests("Rate limit exceeded.")
+            if service.rate_limit_action == 'warning':
+                pass # Just let it pass if it's warning
+            else:
+                raise APITooManyRequests("Rate limit exceeded.")
 
         vals = {'service_id': service.id}
         if client:
             vals['client_id'] = client.id
+        if session_id:
+            vals['session_id'] = session_id
         request.env['t4.coreapi.rate.limit.log'].sudo().create(vals)
 
     def _execute_api_action(self, api_action, context):
@@ -152,15 +161,16 @@ class CoreApiDispatcher:
             
             ctx = {"core api": coreapi_data, **request.env.context}
             
-            for req in service.required_action_ids.sorted(lambda x: x.sequence):
+            for req in service.primary_action_ids.sorted(lambda x: x.sequence):
                 action_result = self._execute_api_action(req.api_action_id, ctx)
                 if action_result and isinstance(action_result, dict):
                     coreapi_data['state'].update(action_result)
                 
-            if service.rate_limit_type == 'user':
+            if service.rate_limit_type in ('session', 'user'):
                 user_id = coreapi_data.get('user_id')
+                session_id = coreapi_data.get('session_id')
                 client = request.env['t4.coreapi.client'].sudo().browse(user_id) if user_id else None
-                self._check_rate_limit(service, client)
+                self._check_rate_limit(service, client, session_id)
                 
             # Filter sensitive contexts before executing the final route action
             coreapi_data.pop('header', None)

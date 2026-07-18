@@ -30,6 +30,21 @@
             <field name="api_action_id" ref="action_t4_coreapi_default_login"/>
         </record>
 
+        <!-- Default Logout Action -->
+        <record id="action_t4_coreapi_default_logout" model="t4.coreapi.action">
+            <field name="name">Default Auth: Logout</field>
+            <field name="model_id" search="[('model', '=', 't4.coreapi.auth')]"/>
+            <field name="code"><![CDATA[model.action_logout()]]></field>
+        </record>
+
+        <!-- Default Logout Route -->
+        <record id="route_auth_logout" model="t4.coreapi.route">
+            <field name="version_id" ref="version_auth_v1"/>
+            <field name="route_path">/logout</field>
+            <field name="allow_method">POST</field>
+            <field name="api_action_id" ref="action_t4_coreapi_default_logout"/>
+        </record>
+
         <!-- Default Auth Middleware Action (Auto-injected into Private Services) -->
         <record id="action_t4_coreapi_default_auth_middleware" model="t4.coreapi.action">
             <field name="name">Default Auth: Auth Middleware (AuthN &amp; AuthZ)</field>

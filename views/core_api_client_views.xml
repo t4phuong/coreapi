@@ -8,6 +8,7 @@
             <list string="API Clients">
                 <field name="name"/>
                 <field name="username"/>
+                <field name="service_id"/>
             </list>
         </field>
     </record>
@@ -29,16 +30,10 @@
                             <field name="username"/>
                             <field name="password" password="True"/>
                         </group>
+                        <group>
+                            <field name="role_ids" widget="many2many"/>
+                        </group>
                     </group>
-                    <notebook>
-                        <page string="Roles">
-                            <field name="role_ids" widget="many2many">
-                                <list>
-                                    <field name="name"/>
-                                </list>
-                            </field>
-                        </page>
-                    </notebook>
                 </sheet>
             </form>
         </field>

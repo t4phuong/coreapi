@@ -12,9 +12,9 @@ class CoreApiVersion(models.Model):
     
     service_id = fields.Many2one(
         't4.coreapi.service', 
-        string='Service', 
-        ondelete='cascade', 
-        required=True)
+        string='Service',
+        required=True,
+        ondelete='cascade')
 
     route_ids = fields.One2many(
         't4.coreapi.route', 
@@ -22,6 +22,10 @@ class CoreApiVersion(models.Model):
         string='Routes')
 
     active = fields.Boolean(default=True)
+
+    def action_inactive_version(self):
+        for record in self:
+            record.active = False
 
     total_routes = fields.Integer(
         string='Routes',

@@ -9,8 +9,49 @@
                 <field name="name"/>
                 <field name="code"/>
                 <field name="privacy"/>
+                <field name="status" widget="badge" decoration-danger="status == 'warning'" decoration-success="status == 'ok'"/>
             </list>
         </field>
+    </record>
+
+    <record id="action_t4_coreapi_version_from_service" model="ir.actions.act_window">
+        <field name="name">Versions</field>
+        <field name="res_model">t4.coreapi.version</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('service_id', '=', active_id)]</field>
+        <field name="context">{'default_service_id': active_id}</field>
+    </record>
+
+    <record id="action_t4_coreapi_auth_session_from_service" model="ir.actions.act_window">
+        <field name="name">Auth Sessions</field>
+        <field name="res_model">t4.coreapi.auth.session</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('service_id', '=', active_id)]</field>
+        <field name="context">{'default_service_id': active_id}</field>
+    </record>
+
+    <record id="action_t4_coreapi_log_from_service" model="ir.actions.act_window">
+        <field name="name">Service Logs</field>
+        <field name="res_model">t4.coreapi.rate.limit.log</field>
+        <field name="view_mode">list</field>
+        <field name="domain">[('service_id', '=', active_id)]</field>
+        <field name="context">{'default_service_id': active_id}</field>
+    </record>
+
+    <record id="action_t4_coreapi_action_from_service" model="ir.actions.act_window">
+        <field name="name">Actions</field>
+        <field name="res_model">t4.coreapi.action</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('service_id', '=', active_id)]</field>
+        <field name="context">{'default_service_id': active_id}</field>
+    </record>
+
+    <record id="action_t4_coreapi_client_from_service" model="ir.actions.act_window">
+        <field name="name">API Users</field>
+        <field name="res_model">t4.coreapi.client</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[('service_id', '=', active_id)]</field>
+        <field name="context">{'default_service_id': active_id}</field>
     </record>
 
     <record id="view_t4_coreapi_service_form" model="ir.ui.view">
@@ -19,9 +60,26 @@
         <field name="arch" type="xml">
             <form string="Core API Service">
                 <header>
-                    <button name="action_generate_jwt_secret" type="object" string="Generate JWT Secret" invisible="privacy == 'public'"/>
+                    <field name="version_id" widget="api_versions_timeline" invisible="not id" options="{'clickable': True}" readonly="False"/>
                 </header>
                 <sheet>
+                    <div name="button_box" class="oe_button_box">
+                        <button name="%(t4_coreapi.action_t4_coreapi_version_from_service)d" type="action" class="oe_stat_button" icon="fa-list-alt">
+                            <field name="version_count" widget="statinfo" string="Versions"/>
+                        </button>
+                        <button name="%(t4_coreapi.action_t4_coreapi_auth_session_from_service)d" type="action" class="oe_stat_button" icon="fa-users">
+                            <field name="session_count" widget="statinfo" string="Sessions"/>
+                        </button>
+                        <button name="%(t4_coreapi.action_t4_coreapi_log_from_service)d" type="action" class="oe_stat_button" icon="fa-book">
+                            <field name="log_count" widget="statinfo" string="Logs"/>
+                        </button>
+                        <button name="%(t4_coreapi.action_t4_coreapi_action_from_service)d" type="action" class="oe_stat_button" icon="fa-cogs">
+                            <field name="action_count" widget="statinfo" string="Actions"/>
+                        </button>
+                        <button name="%(t4_coreapi.action_t4_coreapi_client_from_service)d" type="action" class="oe_stat_button" icon="fa-user-secret" invisible="privacy == 'public'">
+                            <field name="client_count" widget="statinfo" string="API Users"/>
+                        </button>
+                    </div>
                     <div class="oe_title">
                         <h1>
                             <field name="name" placeholder="Name"/>
@@ -31,11 +89,19 @@
                         <group string="Information">
                             <field name="code"/>
                             <field name="privacy" widget="radio"/>
+                            <field name="status" decoration-danger="status == 'warning'" decoration-success="status == 'ok'"/>
+                            <label for="model_ids"/>
+                            <div class="o_row">
+                                <field name="model_ids" widget="many2many_tags" placeholder="Select Models..."/>
+                                <button name="action_generate_core_api_action" type="object" icon="fa-cogs" class="btn-sm btn-secondary oe_inline" title="Generate Actions"/>
+                            </div>
                         </group>
                         <group string="Security">
-                            <field name="jwt_secret" invisible="1"/>
+                            <field name="token_expiration" invisible="privacy == 'public'"/>
+                            <field name="allow_multiple_sessions" invisible="privacy == 'public'" widget="boolean_toggle"/>
                             <field name="is_rate_limit_enabled" widget="boolean_toggle"/>
                             <field name="rate_limit_type" invisible="privacy == 'public' or not is_rate_limit_enabled" widget="radio"/>
+                            <field name="rate_limit_action" invisible="not is_rate_limit_enabled" widget="radio"/>
                             <label for="rate_limit_calls" string="Limit (Calls/Period)" invisible="not is_rate_limit_enabled"/>
                             <div class="o_row" invisible="not is_rate_limit_enabled">
                                 <field name="rate_limit_calls" class="oe_inline"/> / 
@@ -44,33 +110,31 @@
                         </group>
                     </group>
                     <notebook>
-                        <page string="Versions">
-                            <field name="version_ids">
-                                <list>
-                                    <field name="name"/>
-                                    <field name="active" widget="boolean_toggle"/>
-                                    <field name="total_routes"/>
+                        <page string="Routes">
+                            <field name="route_ids">
+                                <list editable="bottom">
+                                    <field name="route_path"/>
+                                    <field name="display_route" widget="CopyClipboardChar" optional="show"/>
+                                    <field name="allow_method"/>
+                                    <field name="role_id"/>
+                                    <field name="api_action_id"/>
                                 </list>
                             </field>
                         </page>
-                        <page string="Required Actions">
-                            <field name="required_action_ids">
+
+                        <page string="Instruction">
+                            <field name="instruction"/>
+                        </page>
+
+                        <page string="Primary Actions">
+                            <field name="primary_action_ids">
                                 <list editable="bottom">
                                     <field name="api_action_id"/>
                                     <field name="sequence"/>
                                 </list>
                             </field>
                         </page>
-                        <page string="API Users" invisible="privacy == 'public'">
-                            <field name="client_ids">
-                                <list editable="bottom">
-                                    <field name="name"/>
-                                    <field name="username"/>
-                                    <field name="password" password="True"/>
-                                    <field name="role_ids" widget="many2many_tags" options="{'no_create': True}"/>
-                                </list>
-                            </field>
-                        </page>
+
                         <page string="Roles" invisible="privacy == 'public'">
                             <field name="role_ids">
                                 <list editable="bottom">
@@ -78,9 +142,6 @@
                                     <field name="implied_ids" widget="many2many_tags"/>
                                 </list>
                             </field>
-                        </page>
-                        <page string="Instruction">
-                            <field name="instruction" nolabel="1"/>
                         </page>
                     </notebook>
                 </sheet>

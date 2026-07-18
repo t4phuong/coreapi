@@ -23,6 +23,13 @@ class CoreApiRoute(models.Model):
         required=True,
         ondelete='cascade')
 
+    service_id = fields.Many2one(
+        't4.coreapi.service',
+        related='version_id.service_id',
+        store=True,
+        string='Service'
+    )
+
     role_id = fields.Many2one(
         't4.coreapi.role',
         string='Allowed Roles',
@@ -46,7 +53,8 @@ class CoreApiRoute(models.Model):
         base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url', 'http://localhost:8069')
         for record in self:
             version = record.version_id
-            record.display_route = f"{base_url}/api/{version.version_code}{record.route_path}"
+            full_path = f"{version.version_code}/{record.route_path}".replace("//", "/") if version else ""
+            record.display_route = f"{base_url}/{full_path.strip('/')}"
 
     _unique_route_per_version = models.Constraint(
         'UNIQUE(route_path, version_id)',

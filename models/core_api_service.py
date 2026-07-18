@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
-from odoo import models, fields, api
-
+from odoo import models, fields, api, _
+import inspect
+# pyrefly: ignore [missing-import]
+from odoo.fields import Domain
+from dateutil.relativedelta import relativedelta
 import logging
 _logger = logging.getLogger(__name__)
 
@@ -10,8 +13,9 @@ class RequiredAction(models.Model):
 
     service_id = fields.Many2one(
         't4.coreapi.service', 
-        string='Service', 
+        string='Service',
         ondelete='cascade')
+        
         
     api_action_id = fields.Many2one(
         't4.coreapi.action',
@@ -27,6 +31,7 @@ class CoreApiService(models.Model):
     _name = 't4.coreapi.service'
     _description = 'Core API Service'
 
+    ############## Elemental fields ####################
     name = fields.Char(
         string='Name', 
         required=True, 
@@ -36,20 +41,124 @@ class CoreApiService(models.Model):
         string='Service Code', 
         required=True)
 
+    active = fields.Boolean(
+        string='Active',
+        default=True,
+        copy=False,
+        help='Whether this API is active or not.')
+
+    status = fields.Selection([
+        ('ok', 'OK'),
+        ('warning', 'Warning')
+    ], string='Status', compute='_compute_status')
+
+    def _compute_status(self):
+        for record in self:
+            if record.rate_limit_action == 'warning' and record.is_rate_limit_enabled:
+                time_limit = fields.Datetime.now() - relativedelta(minutes=record.rate_limit_period or 1)
+                count = self.env['t4.coreapi.rate.limit.log'].search_count([
+                    ('service_id', '=', record.id),
+                    ('create_date', '>=', time_limit)
+                ])
+                record.status = 'warning' if count >= (record.rate_limit_calls or 100) else 'ok'
+            else:
+                record.status = 'ok'
+
+    primary_action_ids = fields.One2many(
+        't4.coreapi.required.action',
+        'service_id',
+        string='Primary Actions')
+
+    ############################# Actor Fields ####################################
+    client_ids = fields.One2many(
+        't4.coreapi.client',
+        'service_id',
+        string='API Users'
+    )
+
+    role_ids = fields.One2many(
+        't4.coreapi.role',
+        'service_id',
+        string='Roles'
+    )
+    ############################### Model & Action Fields ####################################
+    action_ids = fields.One2many(
+        't4.coreapi.action', 
+        'service_id', 
+        string='Actions')
+
+    model_ids = fields.Many2many(
+        'ir.model',
+        string='Models'
+    )
+    ################################## Version & Routes ####################################    
+    current_version_id = fields.Many2one(
+        't4.coreapi.version',
+        compute='_compute_current_version_id',
+        store=True
+    )
+
+    def _compute_current_version_id(self):
+        for record in self:
+            version = self.env['t4.coreapi.version'].search([
+                ('service_id', '=', record.id),
+                ('active', '=', True),
+            ], limit=1, order='id asc')
+            record.current_version_id = version
+
+    version_id = fields.Many2one(
+        't4.coreapi.version',
+        compute='_compute_version_id',
+        search='_search_version_id',
+        ondelete='cascade',
+        required=True,
+        compute_sudo=True)
+
+    def _search_version_id(self, operator, value):
+        domain = Domain('id', operator, value)
+        return Domain('id', 'in', self.env['t4.coreapi.version']._search(domain).select('service_id'))
+
+    @api.depends('current_version_id')
+    @api.depends_context('version_id', 'service_id')
+    def _compute_version_id(self):
+        context_version_id = self.env.context.get('version_id', False)
+        version_id = self.env['t4.coreapi.version'].browse(context_version_id).exists() if context_version_id else False
+        
+        for record in self:
+            if version_id and version_id.service_id == record:
+                record.version_id = version_id
+            else:
+                record.version_id = record.current_version_id
+    
+    version_ids = fields.One2many(
+        't4.coreapi.version', 
+        'service_id', 
+        string='Versions')
+
+    route_ids = fields.One2many(
+        related='version_id.route_ids', 
+        readonly=False,
+        context={'version_id': version_id})
+
+    ################################# Security Part ####################################
+    privacy = fields.Selection([
+        ('public', 'Public'),
+        ('private', 'Private')
+    ], string='Privacy', default='private', required=True)
+
     is_rate_limit_enabled = fields.Boolean(
         string='Enable Rate Limit',
         default=False)
 
-    rate_limit_type = fields.Selection([
-        ('service', 'Service Level'),
-        ('user', 'User Level')
-    ], string='Rate Limit Type', default='service', required=True)
+    allow_multiple_sessions = fields.Boolean(
+        string='Allow Multiple Sessions',
+        default=False)
 
-    @api.onchange('privacy')
-    def _onchange_privacy(self):
-        for record in self:
-            if record.privacy == 'public':
-                record.rate_limit_type = 'service'
+    token_expiration = fields.Integer(
+        string='Token Expiration (Hours)',
+        default=24,
+        help='Token validity duration in hours.'
+    )
 
     rate_limit_calls = fields.Integer(
         string='Max Calls',
@@ -60,111 +169,182 @@ class CoreApiService(models.Model):
         default=1,
         help='Time window in minutes to check for max calls.')
 
-    privacy = fields.Selection([
-        ('public', 'Public'),
-        ('private', 'Private')
-    ], string='Privacy', default='private', required=True)
+    rate_limit_action = fields.Selection([
+        ('warning', 'Warning'),
+        ('block', 'Block')
+    ], string='Rate Limit Action', default='block', required=True)
 
-    jwt_secret = fields.Char(
-        string='JWT Secret',
-        default=lambda self: __import__('uuid').uuid4().hex,
-        copy=False,
-        help='Secret key used to sign JWT tokens for this service.'
-    )
+    rate_limit_type = fields.Selection([
+        ('service', 'Service Level'),
+        ('user', 'User Level'),
+        ('session', 'Session Level')
+    ], string='Rate Limit Type', default='service', required=True)
 
+    # constraint on privacy
+    @api.onchange('privacy')
+    def _onchange_privacy(self):
+        for record in self:
+            if record.privacy == 'public':
+                record.rate_limit_type = 'service'
+
+    ################################# Instruction Part ####################################
     instruction = fields.Html(
         string='Instruction',
         compute='_compute_instruction'
     )
 
-    @api.depends('privacy', 'code', 'name')
+    @api.depends('privacy', 'code', 'name', 'version_id')
     def _compute_instruction(self):
         base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url', 'http://localhost:8069')
         for record in self:
+            version_str = f" - {record.version_id.name}" if record.version_id else ""
+            version_path = f"/{record.version_id.name}" if record.version_id else ""
+            
             if record.privacy == 'public':
                 record.instruction = f"""
-                <h3>How to query {record.name} (Public)</h3>
-                <p>This service is public. No authentication is required.</p>
-                <p><strong>Headers:</strong></p>
-                <ul>
-                    <li><code>Content-Type: application/json</code></li>
-                    <li><code>X-Odoo-Database: {self.env.cr.dbname}</code></li>
-                </ul>
-                <p><strong>Example Path:</strong> <code>{base_url}/api/{record.code}/v1/route</code></p>
+                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 5px solid #28a745;">
+                    <h3 style="color: #28a745; margin-top: 0;">How to query {record.name} (Public){version_str}</h3>
+                    <p style="font-size: 14px;">This service is public. No authentication is required.</p>
+                    <div style="margin-top: 15px;">
+                        <strong style="color: #495057;">Headers:</strong>
+                        <ul style="background: #e9ecef; padding: 10px 10px 10px 30px; border-radius: 5px; font-family: monospace;">
+                            <li>Content-Type: application/json</li>
+                            <li>X-Odoo-Database: {self.env.cr.dbname}</li>
+                        </ul>
+                    </div>
+                    <div style="margin-top: 15px;">
+                        <strong style="color: #495057;">Example Path:</strong>
+                        <div style="background: #e9ecef; padding: 10px; border-radius: 5px; font-family: monospace;">
+                            {base_url}/api/{record.code}{version_path}/route
+                        </div>
+                    </div>
+                </div>
                 """
             else:
                 record.instruction = f"""
-                <h3>How to query {record.name} (Private)</h3>
-                <p>This service requires authentication.</p>
-                <p><strong>1. Get Token:</strong> Send a POST request to the <code>auth</code> service's <code>/login</code> route.</p>
-                <p><strong>Headers:</strong></p>
-                <ul>
-                    <li><code>Content-Type: application/json</code></li>
-                    <li><code>X-Odoo-Database: {self.env.cr.dbname}</code></li>
-                </ul>
-                <p><strong>Body (Raw JSON):</strong></p>
-                <pre><code>{{\n  "username": "your_username",\n  "password": "your_password"\n}}</code></pre>
-                
-                <p><strong>2. Query API:</strong> Include the token in your subsequent requests.</p>
-                <p><strong>Headers:</strong></p>
-                <ul>
-                    <li><code>Content-Type: application/json</code></li>
-                    <li><code>X-Odoo-Database: {self.env.cr.dbname}</code></li>
-                    <li><code>Authorization: Bearer &lt;your_token&gt;</code></li>
-                </ul>
-                <p><strong>Example Body (Raw JSON):</strong></p>
-                <pre><code>{{\n  "key": "value"\n}}</code></pre>
+                <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; border-left: 5px solid #007bff;">
+                    <h3 style="color: #007bff; margin-top: 0;">How to query {record.name} (Private){version_str}</h3>
+                    <p style="font-size: 14px;">This service requires authentication.</p>
+                    
+                    <h4 style="color: #495057; margin-top: 20px;">1. Get Token:</h4>
+                    <p style="font-size: 13px; color: #6c757d;">Send a POST request to the <code>auth</code> service's <code>/login</code> route.</p>
+                    <div style="margin-top: 10px;">
+                        <strong style="color: #495057;">Headers:</strong>
+                        <ul style="background: #e9ecef; padding: 10px 10px 10px 30px; border-radius: 5px; font-family: monospace;">
+                            <li>Content-Type: application/json</li>
+                            <li>X-Odoo-Database: {self.env.cr.dbname}</li>
+                        </ul>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <strong style="color: #495057;">Body (Raw JSON):</strong>
+                        <pre style="background: #212529; color: #f8f9fa; padding: 10px; border-radius: 5px;"><code>{{
+  "username": "your_username",
+  "password": "your_password"
+}}</code></pre>
+                    </div>
+                    
+                    <h4 style="color: #495057; margin-top: 20px;">2. Query API:</h4>
+                    <p style="font-size: 13px; color: #6c757d;">Include the token in your subsequent requests.</p>
+                    <div style="margin-top: 10px;">
+                        <strong style="color: #495057;">Headers:</strong>
+                        <ul style="background: #e9ecef; padding: 10px 10px 10px 30px; border-radius: 5px; font-family: monospace;">
+                            <li>Content-Type: application/json</li>
+                            <li>X-Odoo-Database: {self.env.cr.dbname}</li>
+                            <li>Authorization: Bearer &lt;your_token&gt;</li>
+                        </ul>
+                    </div>
+                    <div style="margin-top: 10px;">
+                        <strong style="color: #495057;">Example Path:</strong>
+                        <div style="background: #e9ecef; padding: 10px; border-radius: 5px; font-family: monospace;">
+                            {base_url}/api/{record.code}{version_path}/route
+                        </div>
+                    </div>
+                </div>
                 """
 
-    client_ids = fields.One2many(
-        't4.coreapi.client',
-        'service_id',
-        string='API Users'
-    )
+    ################################# Meta Data Fields ####################################
+    session_count = fields.Integer(string='Session Count', compute='_compute_session_count')
+    def _compute_session_count(self):
+        for record in self:
+            record.session_count = self.env['t4.coreapi.auth.session'].search_count([('service_id', '=', record.id)])
 
-    _sql_constraints = [
-        ('unique_code', 'UNIQUE(code)', 'Service code must be unique!')
-    ]
+    log_count = fields.Integer(string='Log Count', compute='_compute_log_count')
+    def _compute_log_count(self):
+        for record in self:
+            record.log_count = self.env['t4.coreapi.rate.limit.log'].search_count([('service_id', '=', record.id)])
 
+    action_count = fields.Integer(string='Action Count', compute='_compute_action_count')
+    def _compute_action_count(self):
+        for record in self:
+            record.action_count = self.env['t4.coreapi.action'].search_count([('service_id', '=', record.id)])
+
+    client_count = fields.Integer(string='Client Count', compute='_compute_client_count')
+    def _compute_client_count(self):
+        for record in self:
+            record.client_count = self.env['t4.coreapi.client'].search_count([('service_id', '=', record.id)])
+
+    version_count = fields.Integer(string='Version Count', compute='_compute_version_count')
+    def _compute_version_count(self):
+        for record in self:
+            record.version_count = len(record.version_ids)
+
+    def _generate_core_api_action(self):
+        target_model_names = self.model_ids.mapped('model')
+        CAaction = self.env['t4.coreapi.action'].sudo()
+        
+        for model_name in target_model_names:
+            target_class = type(self.env[model_name])
+            model_record = self.env['ir.model'].search([('model', '=', model_name)], limit=1)
+            for method_name, func in inspect.getmembers(target_class, predicate=callable):
+                if hasattr(func, '_is_endpoint'):
+                    action_name = getattr(func, '_endpoint_name')
+                    code_body = f"result = model.{method_name}()"
+                    existing_action = CAaction.search([
+                        ('service_id', '=', self.id),
+                        ('name', '=', action_name)
+                    ], limit=1)
+
+                    vals = {
+                        'name': action_name,
+                        'model_id': model_record.id,
+                        'code': code_body,
+                        'service_id': self.id,
+                    }
+
+                    if existing_action:
+                        existing_action.write(vals)
+                    else:
+                        CAaction.create(vals)
+    
+    def action_generate_core_api_action(self):
+        self._generate_core_api_action()
+        
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Success'),
+                'message': _('Endpoints have been synchronized.'),
+                'type': 'success',
+                'sticky': False,
+            }
+        }
+
+
+    ################################# Constraints Part & CRUD ####################################
     @api.model_create_multi
     def create(self, vals_list):
         records = super().create(vals_list)
-        auth_middleware = self.env.ref('t4_coreapi.action_t4_coreapi_default_auth_middleware', raise_if_not_found=False)
-        if auth_middleware:
-            for record in records:
-                self.env['t4.coreapi.required.action'].create({
-                    'service_id': record.id,
-                    'api_action_id': auth_middleware.id,
-                    'sequence': 10
-                })
+        for record in records:
+            self.env['t4.coreapi.version'].create({
+                'name': 'v1',
+                'service_id': record.id,
+            })
         return records
-
-    role_ids = fields.One2many(
-        't4.coreapi.role',
-        'service_id',
-        string='Roles'
-    )
-
-    version_ids = fields.One2many(
-        't4.coreapi.version', 
-        'service_id', 
-        string='Versions',
-        context={"active_test": False})
-
-    required_action_ids = fields.One2many(
-        't4.coreapi.required.action', 
-        'service_id', 
-        string='Required Actions')
-
+    
     _service_code_unique = models.Constraint(
         "UNIQUE(code)",
         "Service code must be unique!")
-
-    def action_generate_jwt_secret(self):
-        for record in self:
-            record.jwt_secret = __import__('uuid').uuid4().hex
-
-
 
 
     

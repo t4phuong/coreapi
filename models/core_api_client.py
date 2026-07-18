@@ -16,19 +16,18 @@ class CoreApiClient(models.Model):
 
     role_ids = fields.Many2many(
         't4.coreapi.role',
-        string='API Roles'
-    )
+        string='API Roles')
 
     service_id = fields.Many2one(
         't4.coreapi.service',
         string='Service',
         required=True,
-        ondelete='cascade'
-    )
+        ondelete='cascade')
 
-    _sql_constraints = [
-        ('unique_username', 'UNIQUE(username)', 'Username must be unique!')
-    ]
+    _unique_client_per_service = models.Constraint(
+        "UNIQUE(username, service_id)",
+        "Username must be unique per service!"
+    )
 
     @api.model_create_multi
     def create(self, vals_list):

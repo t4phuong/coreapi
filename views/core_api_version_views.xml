@@ -5,6 +5,9 @@
         <field name="model">t4.coreapi.version</field>
         <field name="arch" type="xml">
             <form string="Core API Version">
+                <header>
+                    <button name="action_inactive_version" type="object" string="Inactive" class="btn-secondary" invisible="not active"/>
+                </header>
                 <sheet>
                     <group>
                         <group>
@@ -20,7 +23,7 @@
                             <field name="route_ids">
                                 <list editable="bottom">
                                     <field name="route_path"/>
-                                    <field name="display_route" widget="CopyClipboardChar" optional="show"/>
+                                    <field name="display_route" widget="CopyClipboardChar" class="text-center" optional="show"/>
                                     <field name="allow_method"/>
                                     <field name="role_id"/>
                                     <field name="api_action_id"/>

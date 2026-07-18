@@ -1,5 +1,4 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_t4_coreapi_action_manager,t4.coreapi.action.manager,model_t4_coreapi_action_manager,base.group_user,1,1,1,1
 access_t4_coreapi_action,t4.coreapi.action,model_t4_coreapi_action,base.group_user,1,1,1,1
 access_t4_coreapi_service,t4.coreapi.service,model_t4_coreapi_service,base.group_user,1,1,1,1
 access_t4_coreapi_version,t4.coreapi.version,model_t4_coreapi_version,base.group_user,1,1,1,1
@@ -8,3 +7,5 @@ access_t4_coreapi_route,t4.coreapi.route,model_t4_coreapi_route,base.group_user,
 access_t4_coreapi_role,t4.coreapi.role,model_t4_coreapi_role,base.group_system,1,1,1,1
 access_t4_coreapi_rate_limit_log,t4.coreapi.rate.limit.log,model_t4_coreapi_rate_limit_log,base.group_system,1,1,1,1
 access_t4_coreapi_client,t4.coreapi.client,model_t4_coreapi_client,base.group_system,1,1,1,1
+access_t4_coreapi_auth_session,t4.coreapi.auth.session,model_t4_coreapi_auth_session,base.group_system,1,1,1,1
+access_t4_coreapi_action_generate_wizard,t4.coreapi.action.generate.wizard,model_t4_coreapi_action_generate_wizard,base.group_user,1,1,1,1

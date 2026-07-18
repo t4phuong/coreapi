@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Tree View for Core API Auth Session -->
+    <record id="view_t4_coreapi_auth_session_list" model="ir.ui.view">
+        <field name="name">t4.coreapi.auth.session.list</field>
+        <field name="model">t4.coreapi.auth.session</field>
+        <field name="arch" type="xml">
+            <list string="Auth Sessions" create="false" edit="false">
+                <field name="session_key"/>
+                <field name="client_id"/>
+                <field name="service_id"/>
+                <field name="expires_at"/>
+                <field name="uses_per_minute"/>
+                <button name="action_revoke_session" type="object" string="Revoke" class="btn-danger"/>
+            </list>
+        </field>
+    </record>
+
+    <!-- Search View for Core API Auth Session -->
+    <record id="view_t4_coreapi_auth_session_search" model="ir.ui.view">
+        <field name="name">t4.coreapi.auth.session.search</field>
+        <field name="model">t4.coreapi.auth.session</field>
+        <field name="arch" type="xml">
+            <search string="Search Auth Sessions">
+                <field name="session_key"/>
+                <field name="client_id"/>
+                <filter string="Active" name="active_sessions" domain="[('expires_at', '&gt;', context_today().strftime('%Y-%m-%d %H:%M:%S'))]"/>
+            </search>
+        </field>
+    </record>
+
+    <!-- Action for Core API Auth Session -->
+    <record id="action_t4_coreapi_auth_session" model="ir.actions.act_window">
+        <field name="name">Auth Sessions</field>
+        <field name="res_model">t4.coreapi.auth.session</field>
+        <field name="view_mode">list</field>
+        <field name="search_view_id" ref="view_t4_coreapi_auth_session_search"/>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_empty_folder">
+                No active auth sessions found.
+            </p>
+        </field>
+    </record>
+
+    <!-- Menu Item for Core API Auth Session -->
+    <menuitem id="menu_t4_coreapi_auth_session" name="Auth Sessions" parent="menu_t4_coreapi_root" action="action_t4_coreapi_auth_session" sequence="30"/>
+</odoo>
