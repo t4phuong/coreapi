@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from odoo import models, fields, api
-import uuid
+import secrets
 
 # pyrefly: ignore [missing-import]
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -9,10 +9,16 @@ class CoreApiClient(models.Model):
     _name = 't4.coreapi.client'
     _description = 'Core API Client'
 
+    def _default_username(self):
+        return secrets.token_urlsafe(12)
+
+    def _default_password(self):
+        return secrets.token_urlsafe(24)
+
     name = fields.Char(string='Client Name', required=True)
     active = fields.Boolean(string='Active', default=True)
-    username = fields.Char(string='Username', required=True)
-    password = fields.Char(string='Password', required=True, help="Will be hashed on save")
+    username = fields.Char(string='Username', required=True, default=_default_username)
+    password = fields.Char(string='Password', default=_default_password, help="Will be hashed on save")
 
     role_ids = fields.Many2many(
         't4.coreapi.role',

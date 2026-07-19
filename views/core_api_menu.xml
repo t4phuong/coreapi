@@ -14,4 +14,6 @@
     
 
     <menuitem id="menu_t4_coreapi_action" name="API Actions" parent="menu_t4_coreapi_configuration" action="action_t4_coreapi_action" sequence="20"/>
+
+    <menuitem id="menu_t4_coreapi_auth_session" name="Auth Sessions" parent="menu_t4_coreapi_root" action="action_t4_coreapi_auth_session" sequence="30"/>
 </odoo>

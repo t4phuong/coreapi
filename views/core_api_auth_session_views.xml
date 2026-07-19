@@ -42,6 +42,4 @@
         </field>
     </record>
 
-    <!-- Menu Item for Core API Auth Session -->
-    <menuitem id="menu_t4_coreapi_auth_session" name="Auth Sessions" parent="menu_t4_coreapi_root" action="action_t4_coreapi_auth_session" sequence="30"/>
 </odoo>

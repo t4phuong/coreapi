@@ -7,16 +7,6 @@
         <field name="model">t4.coreapi.action</field>
         <field name="arch" type="xml">
             <list string="API Actions">
-                <!-- <header>
-                    <button name="%(t4_coreapi.action_t4_coreapi_action_generate_wizard)d" type="action" string="Generate Actions" display="always" context="{'default_service_id': context.get('default_service_id')}"/>
-                    
-                    <button name="action_generate_core_api_action"
-                        string="Generate Actions"
-                        type="object"
-                        class="btn-primary"
-                        display="always"
-                        context="{'service_id': context.get('service_id')}"/>
-                </header> -->
                 <field name="name"/>
                 <field name="model_id"/>
             </list>

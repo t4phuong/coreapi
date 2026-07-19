@@ -48,6 +48,14 @@ class CoreApiVersion(models.Model):
         for record in self:
             record.version_code = f"{record.service_id.code}/{record.name}"
 
+    @api.model_create_multi
+    def create(self, vals_list):
+        records = super().create(vals_list)
+        for record in records:
+            if record.service_id:
+                record.service_id.current_version_id = record
+        return records
+
     _unique_version_per_service = models.Constraint(
         'UNIQUE(name, service_id)',
         'Version name must be unique per service!'

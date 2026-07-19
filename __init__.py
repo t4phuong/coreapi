@@ -3,4 +3,3 @@ from . import models
 from . import exceptions
 from . import utils
 from . import auth
-from . import wizard

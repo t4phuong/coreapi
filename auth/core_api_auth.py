@@ -10,8 +10,7 @@ from datetime import datetime, timedelta
 # pyrefly: ignore [missing-import]
 from odoo.addons.t4_coreapi.utils.utils import endpoint, get_body, get_headers, get_route, get_coreapi_data
 
-import uuid
-
+import secrets
 class CoreApiAuthSession(models.Model):
     _name = 't4.coreapi.auth.session'
     _description = 'Core API Auth Session'
@@ -83,7 +82,7 @@ class CoreApiAuth(models.AbstractModel):
             existing_sessions = self.env['t4.coreapi.auth.session'].sudo().search([('client_id', '=', client.id)])
             existing_sessions.unlink()
 
-        session_key = uuid.uuid4().hex
+        session_key = secrets.token_hex(32)
         self.env['t4.coreapi.auth.session'].sudo().create({
             'session_key': session_key,
             'client_id': client.id,
@@ -97,11 +96,12 @@ class CoreApiAuth(models.AbstractModel):
 
     @endpoint("Default Auth: Auth Middleware (AuthN & AuthZ)")
     def action_auth_middleware(self):
-        route = get_route(self.env)
+        service = self.env.context.get('service')
+        route = self.env.context.get('route')
+        auth_info = self.env.context.get('auth_info')
         if not route:
             return {}
 
-        service = route.version_id.service_id
         if service.privacy == 'public':
             return {}
 
@@ -131,21 +131,20 @@ class CoreApiAuth(models.AbstractModel):
                 raise APIForbidden("Forbidden: Client does not have the required role")
                 
         # Update user_id and session_id in context
-        coreapi_data = get_coreapi_data(self.env)
-        if coreapi_data is not None:
-            coreapi_data['user_id'] = client.id
-            coreapi_data['session_id'] = session.id
+        if auth_info is not None:
+            auth_info['client'] = client
+            auth_info['service'] = service
+            auth_info['roles'] = self._get_all_roles(client)
+            auth_info['session'] = session
             
         return {}
 
     @endpoint("Default Auth: Logout")
-    def action_logout(self):
-        coreapi_data = get_coreapi_data(self.env)
-        session_id = coreapi_data.get('session_id') if coreapi_data else None
-        if not session_id:
+    def action_logout(self, auth_info):
+        session = auth_info.get('session')
+        if not session:
             raise APIUnauthorized("Not authenticated or missing session")
         
-        session = self.env['t4.coreapi.auth.session'].sudo().browse(session_id)
         if session.exists():
             session.unlink()
             

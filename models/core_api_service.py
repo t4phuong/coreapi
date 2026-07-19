@@ -4,22 +4,31 @@ import inspect
 # pyrefly: ignore [missing-import]
 from odoo.fields import Domain
 from dateutil.relativedelta import relativedelta
+# pyrefly: ignore [missing-import]
+from odoo.addons.t4_coreapi.exceptions import (
+    APIBadRequest,
+    APIUnauthorized,
+    APITooManyRequests, 
+)
+# pyrefly: ignore [missing-import]
+from odoo.addons.t4_coreapi.utils import endpoint
 import logging
 _logger = logging.getLogger(__name__)
 
-class RequiredAction(models.Model):
-    _name = 't4.coreapi.required.action'
-    _description = 'Required Action'
+class CoreApiMiddleware(models.Model):
+    _name = 't4.coreapi.middleware'
+    _description = 'API Middlewares'
+    _order = 'sequence'
 
     service_id = fields.Many2one(
         't4.coreapi.service', 
         string='Service',
         ondelete='cascade')
         
-        
     api_action_id = fields.Many2one(
         't4.coreapi.action',
         string='Required Actions',
+        domain="['|', ('service_id', '=', service_id), ('service_id', '=', False)]",
         required=True)
 
     sequence = fields.Integer(
@@ -64,10 +73,10 @@ class CoreApiService(models.Model):
             else:
                 record.status = 'ok'
 
-    primary_action_ids = fields.One2many(
-        't4.coreapi.required.action',
+    middleware_ids = fields.One2many(
+        't4.coreapi.middleware',
         'service_id',
-        string='Primary Actions')
+        string='Middlewares')
 
     ############################# Actor Fields ####################################
     client_ids = fields.One2many(
@@ -94,17 +103,8 @@ class CoreApiService(models.Model):
     ################################## Version & Routes ####################################    
     current_version_id = fields.Many2one(
         't4.coreapi.version',
-        compute='_compute_current_version_id',
-        store=True
-    )
-
-    def _compute_current_version_id(self):
-        for record in self:
-            version = self.env['t4.coreapi.version'].search([
-                ('service_id', '=', record.id),
-                ('active', '=', True),
-            ], limit=1, order='id asc')
-            record.current_version_id = version
+        string='Current Version',
+        store=True)
 
     version_id = fields.Many2one(
         't4.coreapi.version',
@@ -330,16 +330,70 @@ class CoreApiService(models.Model):
             }
         }
 
+    ################################ Endpoints Functions ################################
+    @endpoint("Default Auth: Rate Limit")
+    def check_rate_limit(self, auth_info):
+        service = auth_info.get('service')
+        if not service:
+            service = self.env.context.get('service')
+        if not service.is_rate_limit_enabled:
+            return
+
+        client = auth_info.get('client')
+        session = auth_info.get('session')
+
+        time_limit = fields.Datetime.now() - relativedelta(minutes=service.rate_limit_period)
+        domain = [('service_id', '=', service.id), ('create_date', '>=', time_limit)]
+        
+        if service.rate_limit_type == 'session':
+            if not session:
+                raise APIBadRequest(_('Session ID is required.'))
+            domain.append(('session_id', '=', session.id))
+        elif service.rate_limit_type == 'user':
+            if not client:
+                raise APIUnauthorized(_('User ID is not found.'))
+            domain.append(('client_id', '=', client.id))
+
+        log_count = self.env['t4.coreapi.rate.limit.log'].sudo().search_count(domain)
+
+        if log_count >= service.rate_limit_calls:
+            if service.rate_limit_action == 'warning':
+                pass
+            else:
+                raise APITooManyRequests("Rate limit exceeded.")
+
+        vals = {'service_id': service.id}
+        if client:
+            vals['client_id'] = client.id
+            vals['session_id'] = session.id
+
+        self.env['t4.coreapi.rate.limit.log'].sudo().create(vals)
 
     ################################# Constraints Part & CRUD ####################################
+    def _default_middlewares(self):
+        self.env['t4.coreapi.middleware'].create([
+            {
+                'service_id': self.id,
+                'api_action_id': self.env.ref('t4_coreapi.action_t4_coreapi_default_auth_middleware').id,
+                'sequence': 1,
+            },
+            {
+                'service_id': self.id,
+                'api_action_id': self.env.ref('t4_coreapi.action_t4_coreapi_default_rate_limit').id,
+                'sequence': 5,
+            }
+        ])
+    
     @api.model_create_multi
     def create(self, vals_list):
         records = super().create(vals_list)
-        for record in records:
-            self.env['t4.coreapi.version'].create({
-                'name': 'v1',
-                'service_id': record.id,
-            })
+        if not self.env.context.get('no_auto_version'):
+            for record in records:
+                record._default_middlewares()
+                self.env['t4.coreapi.version'].create({
+                    'name': 'v1',
+                    'service_id': record.id,
+                })
         return records
     
     _service_code_unique = models.Constraint(

@@ -30,14 +30,6 @@
         <field name="context">{'default_service_id': active_id}</field>
     </record>
 
-    <record id="action_t4_coreapi_log_from_service" model="ir.actions.act_window">
-        <field name="name">Service Logs</field>
-        <field name="res_model">t4.coreapi.rate.limit.log</field>
-        <field name="view_mode">list</field>
-        <field name="domain">[('service_id', '=', active_id)]</field>
-        <field name="context">{'default_service_id': active_id}</field>
-    </record>
-
     <record id="action_t4_coreapi_action_from_service" model="ir.actions.act_window">
         <field name="name">Actions</field>
         <field name="res_model">t4.coreapi.action</field>
@@ -69,9 +61,6 @@
                         </button>
                         <button name="%(t4_coreapi.action_t4_coreapi_auth_session_from_service)d" type="action" class="oe_stat_button" icon="fa-users">
                             <field name="session_count" widget="statinfo" string="Sessions"/>
-                        </button>
-                        <button name="%(t4_coreapi.action_t4_coreapi_log_from_service)d" type="action" class="oe_stat_button" icon="fa-book">
-                            <field name="log_count" widget="statinfo" string="Logs"/>
                         </button>
                         <button name="%(t4_coreapi.action_t4_coreapi_action_from_service)d" type="action" class="oe_stat_button" icon="fa-cogs">
                             <field name="action_count" widget="statinfo" string="Actions"/>
@@ -117,7 +106,7 @@
                                     <field name="display_route" widget="CopyClipboardChar" optional="show"/>
                                     <field name="allow_method"/>
                                     <field name="role_id"/>
-                                    <field name="api_action_id"/>
+                                    <field name="api_action_id" domain="['|', ('service_id', '=', service_id), ('service_id', '=', False)]"/>
                                 </list>
                             </field>
                         </page>
@@ -126,8 +115,8 @@
                             <field name="instruction"/>
                         </page>
 
-                        <page string="Primary Actions">
-                            <field name="primary_action_ids">
+                        <page string="Middlewares">
+                            <field name="middleware_ids">
                                 <list editable="bottom">
                                     <field name="api_action_id"/>
                                     <field name="sequence"/>

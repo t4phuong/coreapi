@@ -21,7 +21,6 @@
         'data/core_api_auth_data.xml',
         'views/core_api_service_views.xml',
         'views/core_api_version_views.xml',
-        'wizard/action_generate_wizard_views.xml',
         'views/core_api_action_views.xml',
         'views/core_api_client_views.xml',
         'views/core_api_auth_session_views.xml',

@@ -12,10 +12,9 @@ def get_coreapi_data(env=None):
     return {}
 
 def get_body(env=None):
-    coreapi_data = get_coreapi_data(env)
-    if 'body' in coreapi_data and coreapi_data['body']:
+    if env and 'body' in env.context and env.context['body']:
         try:
-            return json.loads(coreapi_data['body'])
+            return json.loads(env.context['body'])
         except Exception:
             return {}
     if request and request.httprequest.data:
@@ -26,29 +25,25 @@ def get_body(env=None):
     return {}
 
 def get_params(env=None):
-    coreapi_data = get_coreapi_data(env)
-    if 'params' in coreapi_data:
-        return coreapi_data['params']
+    if env and 'params' in env.context and env.context['params']:
+        return env.context['params']
     if request:
         return request.params
     return {}
 
 def get_headers(env=None):
-    coreapi_data = get_coreapi_data(env)
-    if 'header' in coreapi_data:
-        return coreapi_data['header']
+    if env and 'header' in env.context and env.context['header']:
+        return env.context['header']
     return {}
 
 def get_state(env=None):
-    coreapi_data = get_coreapi_data(env)
-    if 'state' in coreapi_data:
-        return coreapi_data['state']
+    if env and 'state' in env.context and env.context['state']:
+        return env.context['state']
     return {}
 
 def get_route(env=None):
-    coreapi_data = get_coreapi_data(env)
-    if 'route' in coreapi_data:
-        return coreapi_data['route']
+    if env and 'route' in env.context and env.context['route']:
+        return env.context['route']
     if request:
         return getattr(request, 'coreapi_route', None)
     return None

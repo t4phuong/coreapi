@@ -29,9 +29,12 @@
                             <field name="service_id"/>
                             <field name="username"/>
                             <field name="password" password="True"/>
+                            <div colspan="2" class="text-muted" style="font-size: 15px; margin-top: -15px;">
+                                <i class="fa fa-info-circle"/> Please copy and save this password. For security reasons, it will be hidden after saving and cannot be viewed again.
+                            </div>
                         </group>
                         <group>
-                            <field name="role_ids" widget="many2many"/>
+                            <field name="role_ids" widget="many2many_tags"/>
                         </group>
                     </group>
                 </sheet>
